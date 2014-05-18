@@ -39,6 +39,7 @@
 #define UTILITIES_H_
 
 #include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
 #include <opencv2/opencv.hpp>
 
 #include <string>
