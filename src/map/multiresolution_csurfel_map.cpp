@@ -830,17 +830,17 @@ void MultiResolutionColorSurfelMap::findImageBorderPoints( const pcl::PointCloud
 
 			// if not nan, push back and break
 			const pcl::PointXYZRGB& p = cloud.points[ idx ];
-			const float x = p.x;
-			const float y = p.y;
-			const float z = p.z;
+			const float p_x = p.x;
+			const float p_y = p.y;
+			const float p_z = p.z;
 
-			if( isnan( x ) || isinf( x ) )
+			if( isnan( p_x ) || isinf( p_x ) )
 				continue;
 
-			if( isnan( y ) || isinf( y ) )
+			if( isnan( p_y ) || isinf( p_y ) )
 				continue;
 
-			if( isnan( z ) || isinf( z ) )
+			if( isnan( p_z ) || isinf( p_z ) )
 				continue;
 
 			indices.push_back( idx );
@@ -854,17 +854,17 @@ void MultiResolutionColorSurfelMap::findImageBorderPoints( const pcl::PointCloud
 
 			// if not nan, push back and break
 			const pcl::PointXYZRGB& p = cloud.points[ idx ];
-			const float x = p.x;
-			const float y = p.y;
-			const float z = p.z;
+			const float p_x = p.x;
+			const float p_y = p.y;
+			const float p_z = p.z;
 
-			if( isnan( x ) || isinf( x ) )
+			if( isnan( p_x ) || isinf( p_x ) )
 				continue;
 
-			if( isnan( y ) || isinf( y ) )
+			if( isnan( p_y ) || isinf( p_y ) )
 				continue;
 
-			if( isnan( z ) || isinf( z ) )
+			if( isnan( p_z ) || isinf( p_z ) )
 				continue;
 
 			indices.push_back( idx );
@@ -883,17 +883,17 @@ void MultiResolutionColorSurfelMap::findImageBorderPoints( const pcl::PointCloud
 
 			// if not nan, push back and break
 			const pcl::PointXYZRGB& p = cloud.points[ idx ];
-			const float x = p.x;
-			const float y = p.y;
-			const float z = p.z;
+			const float p_x = p.x;
+			const float p_y = p.y;
+			const float p_z = p.z;
 
-			if( isnan( x ) || isinf( x ) )
+			if( isnan( p_x ) || isinf( p_x ) )
 				continue;
 
-			if( isnan( y ) || isinf( y ) )
+			if( isnan( p_y ) || isinf( p_y ) )
 				continue;
 
-			if( isnan( z ) || isinf( z ) )
+			if( isnan( p_z ) || isinf( p_z ) )
 				continue;
 
 			indices.push_back( idx );
@@ -907,17 +907,17 @@ void MultiResolutionColorSurfelMap::findImageBorderPoints( const pcl::PointCloud
 
 			// if not nan, push back and break
 			const pcl::PointXYZRGB& p = cloud.points[ idx ];
-			const float x = p.x;
-			const float y = p.y;
-			const float z = p.z;
+			const float p_x = p.x;
+			const float p_y = p.y;
+			const float p_z = p.z;
 
-			if( isnan( x ) || isinf( x ) )
+			if( isnan( p_x ) || isinf( p_x ) )
 				continue;
 
-			if( isnan( y ) || isinf( y ) )
+			if( isnan( p_y ) || isinf( p_y ) )
 				continue;
 
-			if( isnan( z ) || isinf( z ) )
+			if( isnan( p_z ) || isinf( p_z ) )
 				continue;
 
 			indices.push_back( idx );
