@@ -3,7 +3,7 @@
 #  Multi-Resolution Surfel Map (MRSMap) Library                                           #
 #  (c) 2010- Joerg Stueckler, Computer Science Institute VI, University of Bonn Germany   #
 #                                                                                         #
-#  Version: 0.2, 02.01.2013                                                               #
+#  Version: 0.2a, 01.05.2014                                                              #
 #                                                                                         #
 ###########################################################################################
 
@@ -56,19 +56,20 @@ Joerg Stueckler, joerg.stueckler.bw@gmail.com
 #######################################################################################################
 
 
-The source code has been tested with Ubuntu Linux 12.04 Precise and PCL 1.7 development version (trunk)
+The source code has been tested with Ubuntu 14.04 LTS Trusty Tahr and PCL 1.7.
 Feel free to adapt the code to other Operating Systems, Linux distributions, or library dependencies.
 You are very much invited to contribute your changes to the source code!
 
 MRSMap depends on the following third party libraries:
-- CMake >= 2.6
-- PCL >= 1.7 (trunk revision 7230 from pointclouds.org)
+- CMake >= 2.8
+- PCL >= 1.7
 - GSL
 - TBB
-- OpenCV >= 2.3.1
-- OctreeLib (currently from https://code.google.com/p/ais-bonn-ros-pkg/ in folder trunk/stacks/ais_bonn_pcl_addons/octreelib NO ROS REQUIRED)
+- OpenCV >= 2.4.8
+- CSparse
+- OctreeLib (from github: https://github.com/ais-hilgert/octreelib)
 - g2o (from github: https://github.com/RainerKuemmerle/g2o)
-- Boost >= 1.40
+- Boost >= 1.54
 - ClooG
 
 
