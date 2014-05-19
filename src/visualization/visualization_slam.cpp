@@ -49,18 +49,19 @@ void ViewerSLAM::visualizeSLAMGraph() {
 
 	for( unsigned int i = 0; i < currShapes.size(); i++ ) {
 
-		char str[ 255 ];
-		sprintf( str, "%i", currShapes[ i ] );
+		char str[255];
+		sprintf(str,"%i",currShapes[i]);
 		viewer->removeShape( str );
 
 	}
 
 	currShapes.clear();
 
+
 	for( unsigned int i = 0; i < slam_->keyFrames_.size(); i++ ) {
 
-		g2o::VertexSE3* v_curr = dynamic_cast< g2o::VertexSE3* >( slam_->optimizer_->vertex( slam_->keyFrames_[ i ]->nodeId_ ) );
-		char str[ 255 ];
+		g2o::VertexSE3* v_curr = dynamic_cast< g2o::VertexSE3* >( slam_->optimizer_->vertex( slam_->keyFrames_[i]->nodeId_ ) );
+		char str[255];
 
 		bool isConnectedToRef = displayAll;
 
@@ -77,29 +78,29 @@ void ViewerSLAM::visualizeSLAMGraph() {
 
 			pcl::PointXYZRGB p1, p2;
 
-			p1.x = camTransform( 0, 3 );
-			p1.y = camTransform( 1, 3 );
-			p1.z = camTransform( 2, 3 );
-			p2.x = p1.x + axislength * camTransform( 0, 0 );
-			p2.y = p1.y + axislength * camTransform( 1, 0 );
-			p2.z = p1.z + axislength * camTransform( 2, 0 );
-			sprintf( str, "%i", shapeIdx );
+			p1.x = camTransform(0,3);
+			p1.y = camTransform(1,3);
+			p1.z = camTransform(2,3);
+			p2.x = p1.x + axislength*camTransform(0,0);
+			p2.y = p1.y + axislength*camTransform(1,0);
+			p2.z = p1.z + axislength*camTransform(2,0);
+			sprintf(str,"%i",shapeIdx);
 			viewer->addLine( p1, p2, 1.0, 0.0, 0.0, std::string( str ) );
 			viewer->setShapeRenderingProperties( pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, linewidth, str );
 			currShapes.push_back( shapeIdx++ );
 
-			p2.x = p1.x + axislength * camTransform( 0, 1 );
-			p2.y = p1.y + axislength * camTransform( 1, 1 );
-			p2.z = p1.z + axislength * camTransform( 2, 1 );
-			sprintf( str, "%i", shapeIdx );
+			p2.x = p1.x + axislength*camTransform(0,1);
+			p2.y = p1.y + axislength*camTransform(1,1);
+			p2.z = p1.z + axislength*camTransform(2,1);
+			sprintf(str,"%i",shapeIdx);
 			viewer->addLine( p1, p2, 0.0, 1.0, 0.0, std::string( str ) );
 			viewer->setShapeRenderingProperties( pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, linewidth, str );
 			currShapes.push_back( shapeIdx++ );
 
-			p2.x = p1.x + axislength * camTransform( 0, 2 );
-			p2.y = p1.y + axislength * camTransform( 1, 2 );
-			p2.z = p1.z + axislength * camTransform( 2, 2 );
-			sprintf( str, "%i", shapeIdx );
+			p2.x = p1.x + axislength*camTransform(0,2);
+			p2.y = p1.y + axislength*camTransform(1,2);
+			p2.z = p1.z + axislength*camTransform(2,2);
+			sprintf(str,"%i",shapeIdx);
 			viewer->addLine( p1, p2, 0.0, 0.0, 1.0, std::string( str ) );
 			viewer->setShapeRenderingProperties( pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, linewidth, str );
 			currShapes.push_back( shapeIdx++ );
@@ -110,48 +111,66 @@ void ViewerSLAM::visualizeSLAMGraph() {
 			// visualize maps at estimated pose
 			pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud2 = pcl::PointCloud< pcl::PointXYZRGB >::Ptr( new pcl::PointCloud< pcl::PointXYZRGB >() );
 
-			slam_->keyFrames_[ i ]->map_->visualize3DColorDistribution( cloud2, selectedDepth, selectedViewDir, false );
+#if USE_POINTFEATURE_REGISTRATION
+			slam_->keyFrames_[i]->map_->visualizeShapeDistribution( cloud2, selectedDepth, selectedViewDir, false );
+#else
+//			slam_->keyFrames_[i]->map_->visualize3DColorMeans( cloud2, selectedDepth, selectedViewDir );
+			if( slam_->keyFrames_[ i ]->cloud_ )
+				*cloud2 = *slam_->keyFrames_[ i ]->cloud_;
+			else
+				slam_->keyFrames_[ i ]->map_->visualize3DColorDistribution( cloud2, selectedDepth, selectedViewDir, false );
+#endif
 
 			pcl::PointCloud< pcl::PointXYZRGB >::Ptr transformedCloud = pcl::PointCloud< pcl::PointXYZRGB >::Ptr( new pcl::PointCloud< pcl::PointXYZRGB >() );
-			pcl::transformPointCloud( *cloud2, *transformedCloud, camTransform.cast< float >() );
+			pcl::transformPointCloud( *cloud2, *transformedCloud, camTransform.cast<float>() );
 
-			sprintf( str, "map%i", i );
-			displayPointCloud( str, transformedCloud );
+			sprintf(str,"map%i",i);
+			displayPointCloud( str, transformedCloud, 2 );
 		}
 
 	}
 
+
 	if( displayAll ) {
+
+		double minEdgeStrength = std::numeric_limits<double>::max();
+		double maxEdgeStrength = -std::numeric_limits<double>::max();
 
 		for( EdgeSet::iterator it = slam_->optimizer_->edges().begin(); it != slam_->optimizer_->edges().end(); ++it ) {
 
 			g2o::EdgeSE3* edge = dynamic_cast< g2o::EdgeSE3* >( *it );
 
 			// add lines for edges
-			g2o::VertexSE3* v1 = dynamic_cast< g2o::VertexSE3* >( edge->vertices()[ 0 ] );
-			g2o::VertexSE3* v2 = dynamic_cast< g2o::VertexSE3* >( edge->vertices()[ 1 ] );
+			g2o::VertexSE3* v1 = dynamic_cast< g2o::VertexSE3* >( edge->vertices()[0] );
+			g2o::VertexSE3* v2 = dynamic_cast< g2o::VertexSE3* >( edge->vertices()[1] );
 
 			// add coordinate frames for vertices
 			Eigen::Matrix4d pose1 = v1->estimate().matrix();
 			Eigen::Matrix4d pose2 = v2->estimate().matrix();
 
 			pcl::PointXYZRGB p1, p2;
-			char str[ 255 ];
-			sprintf( str, "%i", shapeIdx );
+			char str[255];
+			sprintf(str,"%i",shapeIdx);
 
-			p1.x = pose1( 0, 3 );
-			p1.y = pose1( 1, 3 );
-			p1.z = pose1( 2, 3 );
-			p2.x = pose2( 0, 3 );
-			p2.y = pose2( 1, 3 );
-			p2.z = pose2( 2, 3 );
+			p1.x = pose1(0,3);
+			p1.y = pose1(1,3);
+			p1.z = pose1(2,3);
+			p2.x = pose2(0,3);
+			p2.y = pose2(1,3);
+			p2.z = pose2(2,3);
 
 			viewer->addLine( p1, p2, 0.0, 0.0, 0.0, std::string( str ) );
-			viewer->setShapeRenderingProperties( pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 2, str );
+			viewer->setShapeRenderingProperties( pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, edge->chi2(), str );
 			currShapes.push_back( shapeIdx++ );
 
+			minEdgeStrength = std::min( minEdgeStrength, edge->chi2() );
+			maxEdgeStrength = std::max( maxEdgeStrength, edge->chi2() );
+
 		}
+		std::cout << minEdgeStrength << " " << maxEdgeStrength << "\n";
 	}
 
 }
+
+
 

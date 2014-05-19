@@ -75,6 +75,9 @@ public:
 		    ("inputpath,i", po::value<std::string>(&path_)->default_value("."), "path to input data")
 		    ("maxresolution,r", po::value<double>(&min_resolution_)->default_value(0.0125f), "maximum resolution")
 		    ("skippastframes,k", po::value<bool>(&skip_past_frames_)->default_value(false), "skip past frames for real-time evaluation")
+		    ("usepointfeatures,p", po::value<int>(&use_pointfeatures_)->default_value(0), "use point features")
+		    ("downsampling", po::value<int>(&downsampling_)->default_value(1), "downsampling of image for mrsmap")
+		    ("debug,d", po::value<int>(&debug_)->default_value(0), "debug visualization")
 		;
 
     	po::variables_map vm;
@@ -135,6 +138,9 @@ public:
 
 		double nextTime = 0;
 
+
+		bool recordFrame = true;
+
 		while( assocFile.good() ) {
 
 			// read in line
@@ -153,8 +159,12 @@ public:
 			if( entryStrs.size() == 4 ) {
 
 				while( !viewer_.processFrame && viewer_.is_running ) {
+					viewer_.spinOnce();
 					usleep( 10 );
 				}
+
+				if( count == 1 )
+					viewer_.processFrame = false;
 
 
 				double stamp = 0.0;
@@ -184,6 +194,10 @@ public:
 				unsigned int numVertices = slam_.optimizer_->vertices().size();
 				unsigned int referenceID = slam_.referenceKeyFrameId_;
 
+				slam_.params_.usePointFeatures_ = use_pointfeatures_;
+				slam_.params_.debugPointFeatures_ = debug_;
+				slam_.params_.downsamplingMRSMapImage_ = downsampling_;
+
 				bool retVal = slam_.addImage( rgbImg, cloud, register_start_resolution, register_stop_resolution, min_resolution_, false );
 
 				double deltat = stopwatch.getTimeSeconds() * 1000.0;
@@ -210,17 +224,19 @@ public:
 				if( !viewer_.is_running )
 					exit( -1 );
 
-				if( graphChanged_ || viewer_.forceRedraw ) {
-					viewer_.visualizeSLAMGraph();
-					viewer_.forceRedraw = false;
+				if( debug_ ) {
+					if( graphChanged_ || viewer_.forceRedraw ) {
+						viewer_.visualizeSLAMGraph();
+						viewer_.forceRedraw = false;
+					}
 				}
 
-//				if( recordFrame ) {
-//					static unsigned int frameId = 0;
-//					char frameStr[255];
-//					sprintf( frameStr, "/home/stueckler/.ros/slam%05d.png", frameId++ );
-//					viewer->saveScreenshot( frameStr );
-//				}
+				if( recordFrame ) {
+					static unsigned int frameId = 0;
+					char frameStr[255];
+					sprintf( frameStr, "/home/stueckler/.ros/slam%05d.png", frameId++ );
+					viewer_.viewer->saveScreenshot( frameStr );
+				}
 
 				viewer_.spinOnce();
 				usleep( 1000 );
@@ -271,6 +287,8 @@ public:
 	ViewerSLAM viewer_;
 
 	bool graphChanged_;
+
+	int use_pointfeatures_, downsampling_, debug_;
 
 };
 

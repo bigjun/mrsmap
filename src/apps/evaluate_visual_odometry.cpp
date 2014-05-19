@@ -35,6 +35,8 @@
  *
  */
 
+
+
 #include <pcl/point_types.h>
 #include <pcl/common/transforms.h>
 
@@ -45,6 +47,9 @@
 #include <mrsmap/map/multiresolution_csurfel_map.h>
 #include <mrsmap/registration/multiresolution_csurfel_registration.h>
 
+//#include <mrsmap/map/multiresolution_vocsurfel_map.h>
+//#include <mrsmap/registration/multiresolution_vocsurfel_registration.h>
+
 #include <mrsmap/visualization/visualization_map.h>
 #include <mrsmap/utilities/utilities.h>
 
@@ -54,23 +59,42 @@
 #include "pcl/common/common_headers.h"
 #include "pcl/visualization/pcl_visualizer.h"
 
+
 #include <boost/program_options.hpp>
 namespace po = boost::program_options;
+
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 using namespace mrsmap;
 
 // parses Juergen Sturm's datasets (tgz archives + timestamp associations)
 // simply takes the base path of the dataset
 
-typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
 
-class EvaluateVisualOdometry {
+typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
+typedef MultiResolutionColorSurfelRegistration MultiResolutionSurfelRegistration;
+
+//typedef MultiResolutionSingleColorSurfelMap MultiResolutionSurfelMap;
+//typedef MultiResolutionSingleColorSurfelRegistration MultiResolutionSurfelRegistration;
+
+class EvaluateVisualOdometry
+{
 public:
 
-	EvaluateVisualOdometry( const std::string& path, unsigned int K ) {
+	EvaluateVisualOdometry( const std::string& path, int K, int intermediateskips, int usefeatures, int usecolor, int usepointfeatures, int usesurfels, int mapprops, int downsampling, int debug ) {
 
 		path_ = path;
 		K_ = K;
+		intermediateSkips_ = intermediateskips;
+		usefeatures_ = usefeatures;
+		usecolor_ = usecolor;
+		mapprops_ = mapprops;
+		usepointfeatures_ = usepointfeatures;
+		usesurfels_ = usesurfels;
+		downsampling_ = downsampling;
+		debug_ = debug;
 
 		min_resolution_ = 0.0125f;
 		max_radius_ = 30.f;
@@ -78,216 +102,455 @@ public:
 		alloc_idx_ = 0;
 
 		for( int i = 0; i < 2; i++ ) {
-			imageAllocator_[ i ] = boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator >( new MultiResolutionSurfelMap::ImagePreAllocator() );
-			treeNodeAllocator_[ i ] = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >(
-					new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 1000 ) );
+			imageAllocator_[i] = boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator >( new MultiResolutionSurfelMap::ImagePreAllocator() );
+			treeNodeAllocator_[i] = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 1000 ) );
 		}
 
-	}
 
-	Eigen::Matrix4f processFrame( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud ) {
+    }
 
-		pcl::StopWatch stopwatch;
 
-		alloc_idx_ = ( alloc_idx_ + 1 ) % 2;
+    Eigen::Matrix4f processFrame( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud ) {
+
+    	pcl::StopWatch stopwatch;
+
+    	alloc_idx_ = (alloc_idx_+1) % 2;
 
 		// prepare map
 		// provide dynamic node allocator
 		// use double buffers for image node and tree node allocators
-		treeNodeAllocator_[ alloc_idx_ ]->reset();
-		boost::shared_ptr< MultiResolutionSurfelMap > currFrameMap = boost::shared_ptr< MultiResolutionSurfelMap >(
-				new MultiResolutionSurfelMap( min_resolution_, max_radius_, treeNodeAllocator_[ alloc_idx_ ] ) );
+    	treeNodeAllocator_[alloc_idx_]->reset();
+    	boost::shared_ptr< MultiResolutionSurfelMap > currFrameMap = boost::shared_ptr< MultiResolutionSurfelMap >( new MultiResolutionSurfelMap( min_resolution_, max_radius_, treeNodeAllocator_[alloc_idx_] ) );
+
 
 		// add points to local map
+//		std::vector< int > contourIndices;
 		std::vector< int > imageBorderIndices;
-		currFrameMap->findVirtualBorderPoints( *cloud, imageBorderIndices );
+//		currFrameMap->findContourPoints( *cloud, contourIndices );
 
-		currFrameMap->imageAllocator_ = imageAllocator_[ alloc_idx_ ];
+		currFrameMap->imageAllocator_ = imageAllocator_[alloc_idx_];
 
-		stopwatch.reset();
-		currFrameMap->addImage( *cloud );
-		currFrameMap->octree_->root_->establishNeighbors();
-		currFrameMap->markNoUpdateAtPoints( *cloud, imageBorderIndices );
-		currFrameMap->evaluateSurfels();
-		double deltat = stopwatch.getTimeSeconds() * 1000.0;
-		std::cout << "build: " << deltat << "\n";
 
-		stopwatch.reset();
-		currFrameMap->buildShapeTextureFeatures();
-		deltat = stopwatch.getTimeSeconds() * 1000.0;
-		std::cout << "feature: " << deltat << "\n";
+		if( usesurfels_ ) {
+			stopwatch.reset();
 
-		currFrameMap->findForegroundBorderPoints( *cloud, imageBorderIndices );
-		currFrameMap->markBorderAtPoints( *cloud, imageBorderIndices );
+			pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloudMRS = cloud;
+			if( downsampling_ > 1 )
+				downsamplePointCloud( cloud, cloudMRS, downsampling_ );
+
+			currFrameMap->addImage( *cloudMRS, false, false );
+			t_construct_image_tree_ = stopwatch.getTimeSeconds() * 1000.0;
+
+			stopwatch.reset();
+			currFrameMap->octree_->root_->establishNeighbors();
+			t_precompute_neighbors_ = stopwatch.getTimeSeconds() * 1000.0;
+
+			stopwatch.reset();
+			currFrameMap->findVirtualBorderPoints( *cloudMRS, imageBorderIndices );
+			currFrameMap->markNoUpdateAtPoints( *cloudMRS, imageBorderIndices );
+			t_virtual_borders_ = stopwatch.getTimeSeconds() * 1000.0;
+
+	//		currFrameMap->findImageBorderPoints( *cloud, imageBorderIndices );
+	//		currFrameMap->markNoUpdateAtPoints( *cloud, imageBorderIndices );
+			stopwatch.reset();
+			currFrameMap->evaluateSurfels();
+			t_precompute_surfels_ = stopwatch.getTimeSeconds() * 1000.0;
+
+			std::cout << "build: " << t_construct_image_tree_+t_precompute_neighbors_+t_virtual_borders_+t_precompute_surfels_ << "\n";
+
+			if( usefeatures_ ) {
+				stopwatch.reset();
+				currFrameMap->buildShapeTextureFeatures();
+				t_shapetexture_features_ = stopwatch.getTimeSeconds() * 1000.0;
+				std::cout << "feature: " << t_shapetexture_features_ << "\n";
+			}
+
+			stopwatch.reset();
+			currFrameMap->findForegroundBorderPoints( *cloudMRS, imageBorderIndices );
+			currFrameMap->markBorderAtPoints( *cloudMRS, imageBorderIndices );
+			t_foreground_borders_ = stopwatch.getTimeSeconds() * 1000.0;
+
+		}
+
+		if( usepointfeatures_ ) {
+			currFrameMap->params_.debugPointFeatures = debug_;
+			stopwatch.reset();
+			currFrameMap->addImagePointFeatures( img_rgb, *cloud );
+			t_point_features_ = stopwatch.getTimeSeconds() * 1000.0;
+			std::cout << "point features: " << t_point_features_ << "\n";
+		}
 
 		// register frames
 		Eigen::Matrix4d transform;
 		transform.setIdentity();
 //		transform = lastTransform_;
 
+
+
 		if( lastFrameMap_ ) {
 
 			stopwatch.reset();
 			pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrSrc;
 			pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrTgt;
-			MultiResolutionColorSurfelRegistration reg;
+			MultiResolutionSurfelRegistration reg;
+
+			reg.params_.use_features_ = usefeatures_;
+			reg.params_.registration_use_color_ = usecolor_;
+
+			reg.params_.registerFeatures_ = usepointfeatures_;
+			reg.params_.registerSurfels_ = usesurfels_;
+
+			reg.params_.debugFeatures_ = debug_;
+
+//			for( unsigned int i = 0; i < 20; i++ )
+//				reg.estimateTransformation( *lastFrameMap_, *currFrameMap, transform, 32.f * currFrameMap->min_resolution_, currFrameMap->min_resolution_, corrSrc, corrTgt, 10, 0, 0 );
 			reg.estimateTransformation( *lastFrameMap_, *currFrameMap, transform, 32.f * currFrameMap->min_resolution_, currFrameMap->min_resolution_, corrSrc, corrTgt, 100, 0, 5 );
 
-			deltat = stopwatch.getTime();
+
+			double deltat = stopwatch.getTime();
 			std::cout << "register: " << deltat << "\n";
 
-		}
 
-//		transform.setIdentity();
+		}
 
 		lastFrameMap_ = currFrameMap;
 		lastTransform_ = transform;
 
-		return transform.cast< float >();
+		return transform.cast<float>();
 
-	}
+    }
 
-	void evaluate() {
 
-		// prepare output file
-		// memorize parameters
+    void evaluate() {
 
-		// parse associations.txt
-		std::ifstream assocFile( ( path_ + std::string( "/associations.txt" ) ).c_str() );
+    	// prepare output file
+    	// memorize parameters
 
-		Eigen::Matrix4f totalTransform;
-		totalTransform.setIdentity();
+    	// parse associations.txt
+    	std::ifstream assocFile( (path_ + std::string("/associations.txt")).c_str() );
 
-		lastTransform_.setIdentity();
+    	Eigen::Matrix4f totalTransform;
+    	totalTransform.setIdentity();
 
-		std::vector< std::vector< std::string > > assocs;
+    	lastTransform_.setIdentity();
 
-		int count = -1;
+    	std::vector< std::vector< std::string > > assocs;
 
-		while( assocFile.good() ) {
+    	int count = -1;
 
-			count++;
+		std::cout << path_ << "\n";
 
-			// read in line
-			char lineCStr[ 1024 ];
-			assocFile.getline( lineCStr, 1024, '\n' );
+    	while( assocFile.good() ) {
 
-			std::string lineStr( lineCStr );
+    		count++;
 
-			// split line at blanks
+    		// read in line
+    		char lineCStr[1024];
+    		assocFile.getline( lineCStr, 1024, '\n' );
+
+    		std::string lineStr( lineCStr );
+
+    		// split line at blanks
 			std::vector< std::string > entryStrs;
-			boost::split( entryStrs, lineStr, boost::is_any_of( "\t " ) );
+			boost::split( entryStrs, lineStr, boost::is_any_of("\t ") );
 
 			if( entryStrs.size() == 4 )
 				assocs.push_back( entryStrs );
 
-		}
+    	}
 
-		lastFrameMap_.reset();
-		totalTransform.setIdentity();
-		lastTransform_.setIdentity();
+    	int k_start = K_;
+    	if( intermediateSkips_ )
+    		k_start = 0;
 
-		char filenum[ 255 ];
-		sprintf( filenum, "%i", K_ );
+		std::ofstream outFileMap( (path_ + "/mrsmap_map_properties.txt").c_str() );
 
-		std::ofstream outFile( ( path_ + "/" + std::string( "visual_odometry_result_delta" ) + std::string( filenum ) + ".txt" ).c_str() );
-		outFile << "# minres: " << min_resolution_ << ", max depth: " << max_radius_ << "\n";
+    	for( unsigned int k = k_start; k <= K_; k++ ) {
 
-		for( unsigned int t = 1; t < assocs.size(); t += K_ ) {
+			lastFrameMap_.reset();
+			totalTransform.setIdentity();
+			lastTransform_.setIdentity();
 
-			std::vector< std::string > entryStrs = assocs[ t ];
+			char filenum[255];
+			sprintf(filenum,"%i",k+1);
 
-			// parse entries, load images, generate point cloud, process images...
+			std::ofstream outFile( (path_ + "/" + "mrsmap_" + (usesurfels_ ? "" : "nosurfels_") + (usefeatures_ ? "" : "nofeatures_") + (usecolor_ ? "" : "nocolor_") + (usepointfeatures_ ? "pf_" : "") + std::string("visual_odometry_result_delta") + std::string(filenum) + ".txt").c_str() );
+			outFile << "# minres: " << min_resolution_ << ", max depth: " << max_radius_ << "\n";
 
-			// display last point cloud
-			if( lastFrameMap_ ) {
-				pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloudMap( new pcl::PointCloud< pcl::PointXYZRGB >() );
 
-				lastFrameMap_->visualize3DColorDistribution( cloudMap, viewer_.selectedDepth, viewer_.selectedViewDir, false );
+//			unsigned int t_k = 0;
 
-				pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud2( new pcl::PointCloud< pcl::PointXYZRGB >() );
-				pcl::transformPointCloud( *cloudMap, *cloud2, totalTransform );
-				viewer_.displayPointCloud( "map cloud", cloud2 );
+			for( unsigned int t_k = 0; t_k <= k; t_k++ ) {
+
+				for( unsigned int t = t_k; t < assocs.size(); t+=k+1 ) {
+
+					std::vector< std::string > entryStrs = assocs[t];
+
+					// parse entries, load images, generate point cloud, process images...
+
+//					cv::Mat alphabetaplane = visualizeAlphaBetaPlane( 0.75f, 512);
+//					cv::imwrite( "alphabeta.png", alphabetaplane );
+
+					if( debug_ ) {
+						bool once = false;
+						while( !once || !viewer_.processFrame ) {
+
+							// display last point cloud
+							if( lastFrameMap_ ) {
+
+								if( viewer_.displayFeatureSimilarity ) {
+
+									Eigen::Vector4f pos = viewer_.selectedPoint.getVector4fMap();
+									spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = lastFrameMap_->octree_->findRepresentative( pos, viewer_.selectedDepth );
+
+									pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloudMap( new pcl::PointCloud< pcl::PointXYZRGB >() );
+
+	//								lastFrameMap_->visualizeSimilarity( n, cloudMap, n->depth_, viewer_.selectedViewDir, false );
+									lastFrameMap_->visualizeBorders( cloudMap, viewer_.selectedDepth, viewer_.selectedViewDir, false );
+
+									pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud2( new pcl::PointCloud< pcl::PointXYZRGB >() );
+									pcl::transformPointCloud( *cloudMap, *cloud2, totalTransform );
+									viewer_.displayPointCloud( "map cloud", cloud2 );
+
+								}
+								else {
+
+									pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloudMap( new pcl::PointCloud< pcl::PointXYZRGB >() );
+
+									lastFrameMap_->visualize3DColorDistribution( cloudMap, viewer_.selectedDepth, viewer_.selectedViewDir, false );
+
+									pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud2( new pcl::PointCloud< pcl::PointXYZRGB >() );
+									pcl::transformPointCloud( *cloudMap, *cloud2, totalTransform );
+									viewer_.displayPointCloud( "map cloud", cloud2 );
+
+								}
+
+		//						pcl::PointCloud< pcl::PointXYZRGBNormal >::Ptr cloudMap( new pcl::PointCloud< pcl::PointXYZRGBNormal >() );
+		//
+		//						lastFrameMap_->visualize3DColorDistributionWithNormals( cloudMap, -1, viewer_.selectedViewDir, false );
+		////						lastFrameMap_->visualize3DColorDistributionWithNormals( cloudMap, viewer_.selectedDepth, viewer_.selectedViewDir, false );
+		//
+		//						pcl::PointCloud< pcl::PointXYZRGBNormal >::Ptr cloud2( new pcl::PointCloud< pcl::PointXYZRGBNormal >() );
+		//						pcl::transformPointCloudWithNormals( *cloudMap, *cloud2, totalTransform );
+		//
+		//						float resolution = lastFrameMap_->min_resolution_;
+		//						if( viewer_.selectedDepth != -1 ) {
+		//							resolution = lastFrameMap_->octree_->resolutions_[viewer_.selectedDepth];
+		//						}
+		////						viewer_.displayMesh( "map cloud", cloud2, 1.f / resolution * 5.f );
+		//						viewer_.displayMesh( "map cloud", cloud2, resolution );
+		////						viewer_.displaySurfaceNormals( "map cloud", cloud2 );
+
+								viewer_.spinOnce();
+								usleep(1000);
+
+							}
+							once = true;
+
+						}
+					}
+
+//					if( t != 400 )
+//						continue;
+
+					// load images
+					cv::Mat depthImg = cv::imread( path_ + "/" + entryStrs[1], CV_LOAD_IMAGE_ANYDEPTH );
+					cv::Mat rgbImg = cv::imread( path_ + "/" + entryStrs[3], CV_LOAD_IMAGE_ANYCOLOR );
+
+//					cv::Mat depthVizImg = mrsmap::visualizeDepth( depthImg, 0.f, 5.f*5000.f );
+////					cv::imshow( "depth", depthVizImg );
+////					cv::waitKey(20);
+//					cv::imwrite( "depth400.png", depthVizImg );
+
+
+//					cv::Mat lImg( rgbImg.rows, rgbImg.cols, CV_8UC1 );
+//					cv::Mat aImg( rgbImg.rows, rgbImg.cols, CV_8UC1 );
+//					cv::Mat bImg( rgbImg.rows, rgbImg.cols, CV_8UC1 );
+//
+//					const float inv_255 = 1.f / 255.f;
+//					const float sqrt305 = 0.5f*sqrtf(3.f);
+//					const unsigned char* colordata = &rgbImg.data[0];
+//					for( unsigned int y = 0; y < depthImg.rows; y++ ) {
+//						for( unsigned int x = 0; x < depthImg.cols; x++ ) {
+//
+//							int b = (*colordata++);
+//							int g = (*colordata++);
+//							int r = (*colordata++);
+//
+//							// HSL by Luminance and Cartesian Hue-Saturation (L-alpha-beta)
+//							float rf = inv_255*r, gf = inv_255*g, bf = inv_255*b;
+//
+//							// RGB to L-alpha-beta:
+//							float L = 0.5f * ( std::max( std::max( rf, gf ), bf ) + std::min( std::min( rf, gf ), bf ) );
+//							float alpha = 0.5f * ( 2.f*rf - gf - bf );
+//							float beta = sqrt305 * (gf-bf);
+//
+//							lImg.at<unsigned char>(y,x) = std::max( 0.f, std::min( 255.f, 255*L ) );
+//							aImg.at<unsigned char>(y,x) = std::max( 0.f, std::min( 255.f, 255*(0.5f+alpha) ) );
+//							bImg.at<unsigned char>(y,x) = std::max( 0.f, std::min( 255.f, 255*(0.5f+beta) ) );
+//
+//						}
+//					}
+//
+////					cv::imshow( "rgb", rgbImg );
+////					cv::imshow( "l", lImg );
+////					cv::imshow( "a", aImg );
+////					cv::imshow( "b", bImg );
+////					cv::waitKey(20);
+//
+//					char lstr[255];
+//					sprintf( lstr, "imgl_%i.png", t );
+//					char astr[255];
+//					sprintf( astr, "imga_%i.png", t );
+//					char bstr[255];
+//					sprintf( bstr, "imgb_%i.png", t );
+//
+//					cv::imwrite( lstr, lImg );
+//					cv::imwrite( astr, aImg );
+//					cv::imwrite( bstr, bImg );
+
+
+
+
+//					cv::imshow(depthImg);
+//					cv::waitKey(20);
+
+					// extract point cloud from image pair
+					pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud( new pcl::PointCloud< pcl::PointXYZRGB >() );
+					imagesToPointCloud( depthImg, rgbImg, entryStrs[0], cloud );
+
+
+					// process data
+					pcl::StopWatch stopwatch;
+					stopwatch.reset();
+					Eigen::Matrix4f transform = processFrame( rgbImg, cloud );
+					double processTime = stopwatch.getTimeSeconds() * 1000.0;
+					totalTransform = (totalTransform * transform).eval();
+
+					std::cout << "total: " << processTime << "\n";
+
+					// write transform to output file
+					Eigen::Quaternionf q( Eigen::Matrix3f( totalTransform.block<3,3>(0,0) ) );
+					outFile << entryStrs[0] << " " << totalTransform(0,3) << " " << totalTransform(1,3) << " " << totalTransform(2,3) << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << " " << processTime << "\n";
+
+					if( mapprops_ ) {
+						lastFrameMap_->indexNodes( 0, 16, true );
+						unsigned int numNodes = lastFrameMap_->indexedNodes_.size();
+
+						algorithm::OcTreeSamplingVectorMap<float, MultiResolutionColorSurfelMap::NodeValue> target_sampling_map = algorithm::downsampleVectorOcTree(*lastFrameMap_->octree_, false, lastFrameMap_->octree_->max_depth_);
+
+						lastFrameMap_->save("tmp.map");
+						struct stat filestatus;
+						stat( "tmp.map", &filestatus );
+						unsigned int filesize = filestatus.st_size;
+
+						double avgDepth = mrsmap::averageDepth( cloud );
+						double medianDepth = mrsmap::medianDepth( cloud );
+
+						outFileMap << t << " " << entryStrs[0] << " " << lastFrameMap_->min_resolution_ << " " << numNodes << " " << avgDepth << " " << medianDepth << " " << filesize << " " << t_construct_image_tree_ << " " << t_precompute_neighbors_ << " " << t_virtual_borders_ << " " << t_precompute_surfels_ << " " << t_shapetexture_features_ << " " << t_foreground_borders_ << " " << t_point_features_ << " ";
+
+						for( unsigned int d = 0; d <= lastFrameMap_->octree_->max_depth_; d++ )
+							outFileMap << d << " " << lastFrameMap_->octree_->resolutions_[d] << " " << target_sampling_map[d].size() << " ";
+
+						outFileMap << "\n";
+
+					}
+
+					lastFrameCloud_ = cloud;
+
+
+
+				}
+
 			}
 
-			// load images
-			cv::Mat depthImg = cv::imread( path_ + "/" + entryStrs[ 1 ], CV_LOAD_IMAGE_ANYDEPTH );
-			cv::Mat rgbImg = cv::imread( path_ + "/" + entryStrs[ 3 ], CV_LOAD_IMAGE_ANYCOLOR );
+    	}
 
-			// extract point cloud from image pair
-			pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud( new pcl::PointCloud< pcl::PointXYZRGB >() );
-			imagesToPointCloud( depthImg, rgbImg, entryStrs[ 0 ], cloud );
+    }
 
-			// process data
-			pcl::StopWatch stopwatch;
-			stopwatch.reset();
-			Eigen::Matrix4f transform = processFrame( rgbImg, cloud );
-			double processTime = stopwatch.getTimeSeconds() * 1000.0;
-			totalTransform = ( totalTransform * transform ).eval();
-
-			std::cout << "total: " << processTime << "\n";
-
-			// write transform to output file
-			Eigen::Quaternionf q( Eigen::Matrix3f( totalTransform.block< 3, 3 >( 0, 0 ) ) );
-			outFile << entryStrs[ 0 ] << " " << totalTransform( 0, 3 ) << " " << totalTransform( 1, 3 ) << " " << totalTransform( 2, 3 ) << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w()
-					<< " " << processTime << "\n";
-
-			lastFrameCloud_ = cloud;
-
-			viewer_.spinOnce();
-			usleep( 1000 );
-
-		}
-
-	}
 
 public:
 
 	std::string path_;
-	unsigned int K_;
+	int K_;
+	int intermediateSkips_;
+	int usefeatures_;
+	int usecolor_;
+	int usepointfeatures_;
+	int usesurfels_;
+	int mapprops_;
+	int debug_;
+	int downsampling_;
 
-	boost::shared_ptr< MultiResolutionSurfelMap > lastFrameMap_;
-	pcl::PointCloud< pcl::PointXYZRGB >::Ptr lastFrameCloud_;
+    boost::shared_ptr< MultiResolutionSurfelMap > lastFrameMap_;
+    pcl::PointCloud< pcl::PointXYZRGB >::Ptr lastFrameCloud_;
 
-	Eigen::Matrix4d lastTransform_;
+    Eigen::Matrix4d lastTransform_;
 
-	float min_resolution_, max_radius_;
+    double t_construct_image_tree_, t_precompute_neighbors_, t_virtual_borders_, t_precompute_surfels_, t_shapetexture_features_, t_point_features_, t_foreground_borders_;
 
-	unsigned int alloc_idx_;
-	boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_[ 2 ];
-	boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_[ 2 ];
+    float min_resolution_, max_radius_;
 
-	Viewer viewer_;
+    unsigned int alloc_idx_;
+    boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_[2];
+    boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_[2];
+
+    Viewer viewer_;
 
 };
 
-int main( int argc, char** argv ) {
 
-	po::options_description desc( "Allowed options" );
+int main(int argc, char** argv) {
+
+	po::options_description desc("Allowed options");
 
 	std::string inputpath = "";
-	int skipframes = 0;
+	int frameskips = 0;
+	int intermediateskips = 0;
+	int mapprops = 0;
+	int usefeatures = 1;
+	int usepointfeatures = 0;
+	int usesurfels = 1;
+	int usecolor = 1;
+	int downsampling = 1;
+	int debug = 1;
 
-	desc.add_options()( "help,h", "help" )( "inputpath,i", po::value< std::string >( &inputpath )->default_value( "." ), "path to input data" )( "skipframe,s",
-			po::value< int >( &skipframes )->default_value( 0 ), "number of skipped frames" );
+	desc.add_options()
+	    ("help,h", "help")
+	    ("inputpath,i", po::value<std::string>(&inputpath)->default_value("."), "path to input data")
+	    ("frameskips,s", po::value<int>(&frameskips)->default_value(0), "number of skipped frames")
+	    ("intermediateskips,m", po::value<int>(&intermediateskips)->default_value(0), "evaluate intermediate frame skips")
+	    ("usefeatures,f", po::value<int>(&usefeatures)->default_value(1), "use shape-texture features")
+	    ("usecolor,c", po::value<int>(&usecolor)->default_value(1), "use color")
+	    ("usepointfeatures,p", po::value<int>(&usepointfeatures)->default_value(0), "use point features")
+	    ("usesurfels", po::value<int>(&usesurfels)->default_value(1), "use surfels")
+	    ("mapprops", po::value<int>(&mapprops)->default_value(0), "evaluate map properties")
+	    ("downsampling", po::value<int>(&downsampling)->default_value(1), "downsampling of image for mrsmap")
+	    ("debug,d", po::value<int>(&debug)->default_value(0), "debug visualization")
+	;
 
 	po::variables_map vm;
-	po::store( po::parse_command_line( argc, argv, desc ), vm );
-	po::notify( vm );
+	po::store(po::parse_command_line(argc, argv, desc), vm);
+	po::notify(vm);
 
-	if( vm.count( "help" ) || vm.count( "h" ) ) {
+	if( vm.count("help") || vm.count("h") ) {
 		std::cout << desc << "\n";
-		exit( 0 );
+		exit(0);
 	}
 
-	EvaluateVisualOdometry ev( inputpath, skipframes + 1 );
+
+	EvaluateVisualOdometry ev( inputpath, frameskips, intermediateskips, usefeatures, usecolor, usepointfeatures, usesurfels, mapprops, downsampling, debug );
 	ev.evaluate();
 
-	while( ev.viewer_.is_running ) {
-		ev.viewer_.spinOnce();
-		usleep( 1000 );
+	if( debug ) {
+		while( ev.viewer_.is_running ) {
+			ev.viewer_.spinOnce();
+			usleep(1000);
+		}
 	}
 
 	return 0;
 }
+
+
 

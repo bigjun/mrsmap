@@ -41,6 +41,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+
 #include "g2o/core/sparse_optimizer.h"
 
 #include "g2o/types/slam3d/types_slam3d.h"
@@ -49,90 +50,120 @@
 #include "g2o/solvers/csparse/linear_solver_csparse.h"
 #include "g2o/solvers/cholmod/linear_solver_cholmod.h"
 
-typedef g2o::BlockSolver< g2o::BlockSolverTraits< 6, 3 > > SlamBlockSolver;
-typedef g2o::LinearSolverCSparse< SlamBlockSolver::PoseMatrixType > SlamLinearSolver;
-typedef g2o::LinearSolverCholmod< SlamBlockSolver::PoseMatrixType > SlamLinearCholmodSolver;
-typedef std::tr1::unordered_map< int, g2o::HyperGraph::Vertex* > VertexIDMap;
-typedef std::set< g2o::HyperGraph::Edge* > EdgeSet;
+
+typedef g2o::BlockSolver< g2o::BlockSolverTraits<6, 3> >  SlamBlockSolver;
+typedef g2o::LinearSolverCSparse<SlamBlockSolver::PoseMatrixType> SlamLinearSolver;
+typedef g2o::LinearSolverCholmod<SlamBlockSolver::PoseMatrixType> SlamLinearCholmodSolver;
+typedef std::tr1::unordered_map<int, g2o::HyperGraph::Vertex*>     VertexIDMap;
+typedef std::set<g2o::HyperGraph::Edge*> EdgeSet;
 
 #include <mrsmap/map/multiresolution_csurfel_map.h>
+//#include <mrsmap/map/multiresolution_pfsurfel_map.h>
+
+#include <set>
+
+#define USE_POINTFEATURE_REGISTRATION 0
+
 
 namespace mrsmap {
 
-typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
+#if USE_POINTFEATURE_REGISTRATION
+	typedef MultiResolutionPointFeatureSurfelMap MultiResolutionSurfelMap;
+#else
+	typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
+#endif
 
-class KeyFrame {
-public:
-	KeyFrame() {
-		sumLogLikelihood_ = 0.0;
-		numEdges_ = 0.0;
-	}
-	~KeyFrame() {
-	}
 
-	boost::shared_ptr< MultiResolutionSurfelMap > map_;
-	unsigned int nodeId_;
+	class KeyFrame {
+	public:
+		KeyFrame() { sumLogLikelihood_ = 0.0; numEdges_ = 0.0; }
+		~KeyFrame() {}
 
-	pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr cloud_;
-	cv::Mat img_rgb;
+		boost::shared_ptr< MultiResolutionSurfelMap > map_;
+		unsigned int nodeId_;
 
-	double sumLogLikelihood_;
-	double numEdges_;
+		pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud_;
+		cv::Mat img_rgb;
+
+		double sumLogLikelihood_;
+		double numEdges_;
+
+		std::set< unsigned int > checkedKeyFrames_;
+
+	};
+
+
+	class SLAM {
+	public:
+
+		class Params {
+		public:
+			Params();
+			~Params() {}
+
+			bool usePointFeatures_;
+			bool debugPointFeatures_;
+			unsigned int downsamplingMRSMapImage_;
+			bool regularizePose_;
+
+		};
+
+		SLAM();
+		virtual ~SLAM();
+
+		unsigned int addKeyFrame( unsigned int v_prev_id, boost::shared_ptr< KeyFrame >& keyFrame, const Eigen::Matrix4d& transform );
+		unsigned int addIntermediateFrame( unsigned int kf_ref_id, boost::shared_ptr< MultiResolutionSurfelMap >& currFrame, const Eigen::Matrix4d& transform );
+
+		bool addEdge( unsigned int v1_id, unsigned int v2_id, float register_start_resolution, float register_stop_resolution, bool checkMatchingLikelihood = true );
+		bool addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4d& transformGuess, float register_start_resolution, float register_stop_resolution, bool checkMatchingLikelihood = true );
+		bool addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4d& transform, const Eigen::Matrix< double, 6, 6 >& covariance );
+
+		bool poseIsClose( const Eigen::Matrix4d& transform );
+		bool poseIsFar( const Eigen::Matrix4d& transform );
+
+		bool addImage( const cv::Mat& img_rgb, const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& pointCloudIn, float startResolution, float stopResolution, float minResolution, bool storeCloud = false );
+
+		bool connectClosePoses( float register_start_resolution, float register_stop_resolution, bool random = false );
+
+		bool refineEdge( g2o::EdgeSE3* edge, float register_start_resolution, float register_stop_resolution );
+
+
+		void refine( unsigned int refineIterations, unsigned int optimizeIterations, float register_start_resolution, float register_stop_resolution );
+		void refineInConvexHull( unsigned int refineIterations, unsigned int optimizeIterations, float register_start_resolution, float register_stop_resolution, float minResolution, const Eigen::Matrix4d& referenceTransform, float minHeight, float maxHeight, std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull );
+		void refineWorstEdges( float fraction, float register_start_resolution, float register_stop_resolution );
+		void refineWorstEdgeRandom( float register_start_resolution, float register_stop_resolution );
+
+		void dumpError();
+
+		boost::shared_ptr< MultiResolutionSurfelMap > getMap( const Eigen::Matrix4d& referenceTransform, float minResolution );
+		boost::shared_ptr< MultiResolutionSurfelMap > getMapInConvexHull( const Eigen::Matrix4d& referenceTransform, float minResolution, float minHeight, float maxHeight, std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull );
+
+
+		// used for all kinds of maps
+		boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_;
+
+		// only for the current frame
+		boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_;
+
+		g2o::SparseOptimizer* optimizer_;
+
+		std::vector< boost::shared_ptr< KeyFrame > > keyFrames_;
+		std::map< unsigned int, boost::shared_ptr< KeyFrame > > keyFrameNodeMap_;
+		unsigned int referenceKeyFrameId_;
+
+		// wrt reference key frame pose
+		Eigen::Matrix4d lastTransform_, lastFrameTransform_; // the latter is the pose used to build the lastFrameMap (in the map reference frame!)
+
+		boost::shared_ptr< MultiResolutionSurfelMap > lastFrameMap_;
+
+		bool connectRandom_;
+
+		Eigen::Matrix4d deltaIncTransform_;
+
+		Params params_;
+	};
 
 };
-
-class SLAM {
-public:
-	SLAM();
-	~SLAM();
-
-	unsigned int addKeyFrame( unsigned int v_prev_id, boost::shared_ptr< KeyFrame >& keyFrame, const Eigen::Matrix4d& transform );
-	unsigned int addIntermediateFrame( unsigned int kf_ref_id, boost::shared_ptr< MultiResolutionSurfelMap >& currFrame, const Eigen::Matrix4d& transform );
-
-	bool addEdge( unsigned int v1_id, unsigned int v2_id, float register_start_resolution, float register_stop_resolution, bool checkMatchingLikelihood = true );
-	bool addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4d& transformGuess, float register_start_resolution, float register_stop_resolution, bool checkMatchingLikelihood = true );
-	bool addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4d& transform, const Eigen::Matrix< double, 6, 6 >& covariance );
-
-	bool poseIsClose( const Eigen::Matrix4d& transform );
-	bool poseIsFar( const Eigen::Matrix4d& transform );
-
-	bool addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& pointCloudIn, float startResolution, float stopResolution, float minResolution,
-			bool storeCloud = false );
-
-	void connectClosePoses( float register_start_resolution, float register_stop_resolution, bool random = false );
-
-	bool refineEdge( g2o::EdgeSE3* edge, float register_start_resolution, float register_stop_resolution );
-
-	void refine( unsigned int refineIterations, unsigned int optimizeIterations, float register_start_resolution, float register_stop_resolution );
-	void refineInConvexHull( unsigned int refineIterations, unsigned int optimizeIterations, float register_start_resolution, float register_stop_resolution, float minResolution,
-			const Eigen::Matrix4d& referenceTransform, float minHeight, float maxHeight, std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull );
-	void refineWorstEdges( float fraction, float register_start_resolution, float register_stop_resolution );
-
-	void dumpError();
-
-	boost::shared_ptr< MultiResolutionSurfelMap > getMap( const Eigen::Matrix4d& referenceTransform, float minResolution );
-	boost::shared_ptr< MultiResolutionSurfelMap > getMapInConvexHull( const Eigen::Matrix4d& referenceTransform, float minResolution, float minHeight, float maxHeight,
-			std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull );
-
-	// used for all kinds of maps
-	boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_;
-
-	// only for the current frame
-	boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_;
-
-	g2o::SparseOptimizer* optimizer_;
-
-	std::vector< boost::shared_ptr< KeyFrame > > keyFrames_;
-	std::map< unsigned int, boost::shared_ptr< KeyFrame > > keyFrameNodeMap_;
-	unsigned int referenceKeyFrameId_;
-
-	// wrt reference key frame pose
-	Eigen::Matrix4d lastTransform_, lastFrameTransform_; // the latter is the pose used to build the lastFrameMap (in the map reference frame!)
-
-	boost::shared_ptr< MultiResolutionSurfelMap > lastFrameMap_;
-};
-
-}
 
 
 #endif

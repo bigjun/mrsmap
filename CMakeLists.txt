@@ -72,6 +72,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 # -- mrslib for map aggregation, registration, and visualization
 set( SRC_MRSMAPLIB    
                 src/map/multiresolution_csurfel_map.cpp
+		src/map/shapetexture_feature.cpp
                 src/registration/multiresolution_csurfel_registration.cpp
 		src/utilities/utilities.cpp
 		src/visualization/visualization_map.cpp
@@ -88,12 +89,6 @@ add_definitions( ${SSE_FLAGS} )
 target_link_libraries( mrsslam mrsmap ${G2O_CORE_LIBRARY} ${G2O_STUFF_LIBRARY} ${G2O_SOLVER_CSPARSE} ${G2O_SOLVER_CSPARSE_EXTENSION} ${G2O_TYPES_SLAM3D})
 
 
-# -- mrsslam_app for incremental slam using an openni camera
-add_executable( mrsslam_app src/apps/mrsslam_app.cpp )
-add_definitions( ${SSE_FLAGS} )
-target_link_libraries( mrsslam_app mrsslam )
-
-
 # -- evaluate_visual_odometry for evaluation of visual odometry performance on RGBD dataset
 add_executable( evaluate_visual_odometry src/apps/evaluate_visual_odometry.cpp )
 add_definitions( ${SSE_FLAGS} )
@@ -104,12 +99,6 @@ target_link_libraries( evaluate_visual_odometry mrsmap ${Boost_PROGRAM_OPTIONS_L
 add_executable( evaluate_slam src/apps/evaluate_slam.cpp )
 add_definitions( ${SSE_FLAGS} )
 target_link_libraries( evaluate_slam mrsslam ${Boost_PROGRAM_OPTIONS_LIBRARY} )
-
-
-# -- train_objectmap for mapping a multi-view mrs model of an object from RGBD dataset
-add_executable( train_objectmap src/apps/train_objectmap.cpp )
-add_definitions( ${SSE_FLAGS} )
-target_link_libraries( train_objectmap mrsslam ${Boost_PROGRAM_OPTIONS_LIBRARY} )
 
 
 # -- evaluate_pose_tracking for evaluation of object tracking on RGBD dataset

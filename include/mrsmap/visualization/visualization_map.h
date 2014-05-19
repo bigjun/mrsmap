@@ -43,42 +43,62 @@
 
 #include <string>
 
+
 namespace mrsmap {
 
-class Viewer {
-public:
-	Viewer();
-	virtual ~Viewer();
+	class Viewer {
+	public:
+		friend class pcl::visualization::PCLVisualizer;
 
-	void spinOnce();
+		Viewer();
+		virtual ~Viewer();
 
-	virtual void keyboardEventOccurred( const pcl::visualization::KeyboardEvent &event, void* data );
+		void spinOnce();
 
-	void displayPointCloud( const std::string& name, const pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud, int pointSize = 5 );
-	void displayPose( const Eigen::Matrix4d& pose );
-	void displayCorrespondences( const std::string& name, const pcl::PointCloud< pcl::PointXYZ >::Ptr& cloud1, const pcl::PointCloud< pcl::PointXYZ >::Ptr& cloud2 );
+		virtual void keyboardEventOccurred( const pcl::visualization::KeyboardEvent &event, void* data );
+		virtual void pointPickingCallback( const pcl::visualization::PointPickingEvent& event, void* data );
 
-	int selectedDepth;
-	int selectedViewDir;
-	bool processFrame;
-	bool displayScene;
-	bool displayMap;
-	bool displayCorr;
-	bool displayAll;
-	bool recordFrame;
-	bool forceRedraw;
+		void displayPointCloud( const std::string& name, const pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud, int pointSize = 5 );
+		void displayPose( const Eigen::Matrix4d& pose );
+		void displayPose( const std::string& name, const Eigen::Matrix4d& pose );
+		void displayCorrespondences( const std::string& name, const pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud1, const pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud2, const Eigen::Matrix4f& transform );
+		void removeCorrespondences( const std::string& name );
+		void displaySurfaceNormals( const std::string& name, const pcl::PointCloud< pcl::PointXYZRGBNormal >::Ptr& cloud );
+		void removeSurfaceNormals( const std::string& name );
 
-	bool is_running;
-	bool close;
+		void displayMesh( const std::string& name, const pcl::PointCloud< pcl::PointXYZRGBNormal >::Ptr& cloud, float resolution, bool poisson = false );
 
-	boost::shared_ptr< pcl::visualization::PCLVisualizer > viewer;
 
-	int shapeIdx;
-	std::vector< int > currShapes;
+		int selectedDepth;
+		int selectedViewDir;
+		bool processFrame;
+		bool displayScene;
+		bool displayMap;
+		bool displayCorr;
+		bool displayAll;
+		bool displayFeatureSimilarity;
+		bool recordFrame;
+		bool forceRedraw;
+		pcl::PointXYZ selectedPoint;
+
+
+		bool is_running;
+		bool close;
+
+		boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+
+		int shapeIdx;
+		std::vector< int > currShapes;
+
+		int normalIdx;
+		std::vector< int > currNormals;
+
+		std::map< std::string, vtkSmartPointer<vtkActor> > mesh_actor_map_;
+
+	};
 
 };
 
-}
 
 
 #endif /* VISUALIZATION_MAP_H_ */

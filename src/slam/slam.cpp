@@ -40,29 +40,45 @@
 #include <pcl/registration/transforms.h>
 
 #include <mrsmap/registration/multiresolution_csurfel_registration.h>
+//#include <mrsmap/registration/multiresolution_pfsurfel_registration.h>
+
 
 #include <pcl/segmentation/extract_polygonal_prism_data.h>
 #include <pcl/surface/convex_hull.h>
 
 #include <g2o/core/optimization_algorithm_levenberg.h>
 
+#include <mrsmap/utilities/utilities.h>
+
 using namespace mrsmap;
+
 
 #define GRADIENT_ITS 100
 #define NEWTON_FEAT_ITS 0
 #define NEWTON_ITS 5
 
-#define LOG_LIKELIHOOD_ADD_THRESHOLD -150000
+#define LOG_LIKELIHOOD_ADD_THRESHOLD -80000
 
 #define REGISTER_TWICE 0
 
+
+//TODO: in freiburg1_room sequenz debuggen, wieso punkfeature schlecht in der einen raumecke
+
+SLAM::Params::Params() {
+	usePointFeatures_ = false;
+	debugPointFeatures_ = false;
+	downsamplingMRSMapImage_ = 1;
+	regularizePose_ = true;
+}
+
+
 SLAM::SLAM() {
 
-	srand( time( NULL ) );
+	srand(time(NULL));
 
 	imageAllocator_ = boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator >( new MultiResolutionSurfelMap::ImagePreAllocator() );
-	treeNodeAllocator_ = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >(
-			new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 1000 ) );
+	treeNodeAllocator_ = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 1000 ) );
+
 
 	referenceKeyFrameId_ = 0;
 	lastTransform_.setIdentity();
@@ -70,15 +86,18 @@ SLAM::SLAM() {
 
 	// allocating the optimizer
 	optimizer_ = new g2o::SparseOptimizer();
-	optimizer_->setVerbose( true );
+	optimizer_->setVerbose(true);
 	SlamLinearSolver* linearSolver = new SlamLinearSolver();
-	linearSolver->setBlockOrdering( false );
-	SlamBlockSolver* solver = new SlamBlockSolver( linearSolver );
+	linearSolver->setBlockOrdering(false);
+	SlamBlockSolver* solver = new SlamBlockSolver(linearSolver);
 
-	g2o::OptimizationAlgorithmLevenberg* solverLevenberg = new g2o::OptimizationAlgorithmLevenberg( solver );
+	g2o::OptimizationAlgorithmLevenberg* solverLevenberg = new g2o::OptimizationAlgorithmLevenberg(solver);
 
 	optimizer_->setAlgorithm( solverLevenberg );
 
+	connectRandom_ = true;
+
+	deltaIncTransform_.setIdentity();
 }
 
 SLAM::~SLAM() {
@@ -92,7 +111,7 @@ unsigned int SLAM::addKeyFrame( unsigned int kf_prev_id, boost::shared_ptr< KeyF
 	keyFrame->nodeId_ = optimizer_->vertices().size();
 
 	// anchor first frame at origin
-	if( keyFrames_.empty() ) {
+	if( keyFrames_.empty() ){
 
 		g2o::VertexSE3* v = new g2o::VertexSE3();
 		v->setId( keyFrame->nodeId_ );
@@ -105,7 +124,7 @@ unsigned int SLAM::addKeyFrame( unsigned int kf_prev_id, boost::shared_ptr< KeyF
 	}
 	else {
 
-		g2o::SE3Quat measurement_mean( Eigen::Quaterniond( transform.block< 3, 3 >( 0, 0 ) ), transform.block< 3, 1 >( 0, 3 ) );
+		g2o::SE3Quat measurement_mean( Eigen::Quaterniond( transform.block<3,3>(0,0) ), transform.block<3,1>(0,3) );
 
 		g2o::VertexSE3* v_prev = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[ kf_prev_id ]->nodeId_ ) );
 
@@ -119,16 +138,17 @@ unsigned int SLAM::addKeyFrame( unsigned int kf_prev_id, boost::shared_ptr< KeyF
 
 	}
 
-	return keyFrames_.size() - 1;
+	return keyFrames_.size()-1;
 
 }
+
 
 unsigned int SLAM::addIntermediateFrame( unsigned int kf_ref_id, boost::shared_ptr< MultiResolutionSurfelMap >& currFrame, const Eigen::Matrix4d& transform ) {
 
 	unsigned int v_id = optimizer_->vertices().size();
 
 	// anchor first frame at origin
-	if( keyFrames_.empty() ) {
+	if( keyFrames_.empty() ){
 
 		std::cerr << "ERROR: first frame should not be intermediate frame!\n";
 		exit( -1 );
@@ -137,7 +157,7 @@ unsigned int SLAM::addIntermediateFrame( unsigned int kf_ref_id, boost::shared_p
 	}
 	else {
 
-		g2o::SE3Quat measurement_mean( Eigen::Quaterniond( transform.block< 3, 3 >( 0, 0 ) ), transform.block< 3, 1 >( 0, 3 ) );
+		g2o::SE3Quat measurement_mean( Eigen::Quaterniond( transform.block<3,3>(0,0) ), transform.block<3,1>(0,3) );
 
 		g2o::VertexSE3* v_prev = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[ kf_ref_id ]->nodeId_ ) );
 
@@ -153,18 +173,20 @@ unsigned int SLAM::addIntermediateFrame( unsigned int kf_ref_id, boost::shared_p
 
 }
 
+
 bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, float register_start_resolution, float register_stop_resolution, bool checkMatchingLikelihood ) {
 
 	g2o::VertexSE3* v1 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v1_id ) );
 	g2o::VertexSE3* v2 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v2_id ) );
 
 	// diff transform from v2 to v1
-	Eigen::Matrix4d diffTransform = ( v1->estimate().inverse() * v2->estimate() ).matrix();
+	Eigen::Matrix4d diffTransform = (v1->estimate().inverse() * v2->estimate()).matrix();
 
 	// add edge to graph
 	return addEdge( v1_id, v2_id, diffTransform, register_start_resolution, register_stop_resolution, checkMatchingLikelihood );
 
 }
+
 
 bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4d& transformGuess, float register_start_resolution, float register_stop_resolution, bool checkMatchingLikelihood ) {
 
@@ -179,26 +201,33 @@ bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4
 	pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrSrc;
 	pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrTgt;
 	MultiResolutionColorSurfelRegistration reg;
-	bool retVal = reg.estimateTransformation( *( keyFrameNodeMap_[ v1_id ]->map_ ), *( keyFrameNodeMap_[ v2_id ]->map_ ), transform, register_start_resolution, register_stop_resolution, corrSrc,
-			corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+	reg.params_.registerFeatures_ = params_.usePointFeatures_;
+	reg.params_.debugFeatures_ = params_.debugPointFeatures_;
+//	reg.params_.pointFeatureMatchingCoarseImagePosMahalDist_ = 2.0*reg.params_.pointFeatureMatchingFineImagePosMahalDist_;
+	bool retVal = reg.estimateTransformation( *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), transform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+
+//	reg.params_.registerFeatures_ = params_.usePointFeatures_;
+//	reg.params_.debugFeatures_ = params_.debugPointFeatures_;
+//	retVal = reg.estimateTransformation( *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), transform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+
 	if( REGISTER_TWICE )
-		retVal = reg.estimateTransformation( *( keyFrameNodeMap_[ v1_id ]->map_ ), *( keyFrameNodeMap_[ v2_id ]->map_ ), transform, register_start_resolution, register_stop_resolution, corrSrc,
-				corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+		retVal = reg.estimateTransformation( *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), transform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
 	if( !retVal )
 		return false;
 
 	Eigen::Matrix4d transforminv = transform.inverse();
-	double logLikelihood1 = reg.matchLogLikelihood( *( keyFrameNodeMap_[ v1_id ]->map_ ), *( keyFrameNodeMap_[ v2_id ]->map_ ), transforminv );
+	double logLikelihood1 = reg.matchLogLikelihood( *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), transform );
 	std::cout << "new edge likelihood1: " << logLikelihood1 << "\n";
 
-	double logLikelihood2 = reg.matchLogLikelihood( *( keyFrameNodeMap_[ v2_id ]->map_ ), *( keyFrameNodeMap_[ v1_id ]->map_ ), transform );
+	double logLikelihood2 = reg.matchLogLikelihood( *(keyFrameNodeMap_[v2_id]->map_), *(keyFrameNodeMap_[v1_id]->map_), transforminv );
 	std::cout << "new edge likelihood2: " << logLikelihood2 << "\n";
 
 	if( checkMatchingLikelihood ) {
-		double baseLogLikelihood1 = keyFrameNodeMap_[ v1_id ]->sumLogLikelihood_ / keyFrameNodeMap_[ v1_id ]->numEdges_;
-		double baseLogLikelihood2 = keyFrameNodeMap_[ v2_id ]->sumLogLikelihood_ / keyFrameNodeMap_[ v2_id ]->numEdges_;
+		double baseLogLikelihood1 = keyFrameNodeMap_[v1_id]->sumLogLikelihood_ / keyFrameNodeMap_[v1_id]->numEdges_;
+		double baseLogLikelihood2 = keyFrameNodeMap_[v2_id]->sumLogLikelihood_ / keyFrameNodeMap_[v2_id]->numEdges_;
 		std::cout << "key frame1 base log likelihood is " << baseLogLikelihood1 << "\n";
 		std::cout << "key frame2 base log likelihood is " << baseLogLikelihood2 << "\n";
+
 
 		if( logLikelihood1 < baseLogLikelihood1 + LOG_LIKELIHOOD_ADD_THRESHOLD || logLikelihood2 < baseLogLikelihood2 + LOG_LIKELIHOOD_ADD_THRESHOLD ) {
 			std::cout << "============= BAD MATCHING LIKELIHOOD ============\n";
@@ -206,7 +235,9 @@ bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4
 		}
 	}
 
-	retVal = reg.estimatePoseCovariance( poseCov, *( keyFrameNodeMap_[ v1_id ]->map_ ), *( keyFrameNodeMap_[ v2_id ]->map_ ), transform, register_start_resolution, register_stop_resolution );
+
+	retVal = reg.estimatePoseCovariance( poseCov, *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), transform, register_start_resolution, register_stop_resolution );
+
 
 	if( !retVal )
 		return false;
@@ -216,12 +247,13 @@ bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4
 
 }
 
+
 // returns true, iff node could be added to the cloud
 bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4d& transform, const Eigen::Matrix< double, 6, 6 >& covariance ) {
 
 	unsigned int edges = optimizer_->edges().size();
 
-	g2o::SE3Quat measurement_mean( Eigen::Quaterniond( transform.block< 3, 3 >( 0, 0 ) ), transform.block< 3, 1 >( 0, 3 ) );
+	g2o::SE3Quat measurement_mean( Eigen::Quaterniond( transform.block<3,3>(0,0) ), transform.block<3,1>(0,3) );
 	Eigen::Matrix< double, 6, 6 > measurement_information = covariance.inverse();
 
 	g2o::VertexSE3* v1 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v1_id ) );
@@ -229,8 +261,8 @@ bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4
 
 	// create edge between new key frame and previous key frame with the estimated transformation
 	g2o::EdgeSE3* edge = new g2o::EdgeSE3();
-	edge->vertices()[ 0 ] = v1;
-	edge->vertices()[ 1 ] = v2;
+	edge->vertices()[0] = v1;
+	edge->vertices()[1] = v2;
 	edge->setMeasurement( measurement_mean );
 	edge->setInformation( measurement_information );
 
@@ -238,29 +270,38 @@ bool SLAM::addEdge( unsigned int v1_id, unsigned int v2_id, const Eigen::Matrix4
 
 }
 
+
 bool SLAM::poseIsClose( const Eigen::Matrix4d& transform ) {
 
-	double angle = Eigen::AngleAxisd( transform.block< 3, 3 >( 0, 0 ) ).angle();
-	double dist = transform.block< 3, 1 >( 0, 3 ).norm();
+	double angle = Eigen::AngleAxisd( transform.block<3,3>(0,0) ).angle();
+	double dist = transform.block<3,1>(0,3).norm();
 
+//	return fabsf( angle ) + dist < 0.2f;
+//	return fabsf( angle ) < 0.2f && dist < 0.3f;
 	return fabsf( angle ) < 0.2f && dist < 0.3f;
 }
 
 bool SLAM::poseIsFar( const Eigen::Matrix4d& transform ) {
 
-	double angle = Eigen::AngleAxisd( transform.block< 3, 3 >( 0, 0 ) ).angle();
-	double dist = transform.block< 3, 1 >( 0, 3 ).norm();
+	double angle = Eigen::AngleAxisd( transform.block<3,3>(0,0) ).angle();
+	double dist = transform.block<3,1>(0,3).norm();
 
 	return fabsf( angle ) > 0.4f || dist > 0.7f;
 }
 
-bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& pointCloudIn, float startResolution, float stopResolution, float minResolution, bool storeCloud ) {
+bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr& pointCloudIn, float startResolution, float stopResolution, float minResolution, bool storeCloud ) {
+
+//	cv::imshow( "rgb", img_rgb );
+//	cv::waitKey(10);
+
+	pcl::StopWatch realtimeWatch;
+	realtimeWatch.reset();
 
 	const int numPoints = pointCloudIn->points.size();
 
 	std::vector< int > indices( numPoints );
 	for( int i = 0; i < numPoints; i++ )
-		indices[ i ] = i;
+		indices[i] = i;
 
 	const float register_start_resolution = startResolution;
 	const float register_stop_resolution = stopResolution;
@@ -272,18 +313,43 @@ bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXY
 	// match current frame to last key frame
 	// create new key frame after some delta in translation or rotation
 
+
 	boost::shared_ptr< MultiResolutionSurfelMap > target = boost::shared_ptr< MultiResolutionSurfelMap >( new MultiResolutionSurfelMap( min_resolution, max_radius ) );
-	Eigen::Matrix4d incTransform = lastTransform_;
+	Eigen::Matrix4d incTransform = lastTransform_ * deltaIncTransform_;
 
 	// add points to local map
 	target->imageAllocator_ = imageAllocator_;
-	target->addImage( *pointCloudIn );
-	std::vector< int > imageBorderIndices;
-	target->findVirtualBorderPoints( *pointCloudIn, imageBorderIndices );
-	target->markNoUpdateAtPoints( *pointCloudIn, imageBorderIndices );
+
+	target->params_.debugPointFeatures = params_.debugPointFeatures_;
+
+	pcl::StopWatch sw;
+	sw.reset();
+
+	if( params_.downsamplingMRSMapImage_ > 1 ) {
+		pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudDownsampled = pcl::PointCloud<pcl::PointXYZRGB>::Ptr( new pcl::PointCloud<pcl::PointXYZRGB>() );
+		mrsmap::downsamplePointCloud( pointCloudIn, cloudDownsampled, params_.downsamplingMRSMapImage_ );
+		target->addImage( *cloudDownsampled );
+		std::vector< int > imageBorderIndices;
+		target->findVirtualBorderPoints( *cloudDownsampled, imageBorderIndices );
+		target->markNoUpdateAtPoints( *cloudDownsampled, imageBorderIndices );
+	}
+	else {
+		target->addImage( *pointCloudIn );
+		std::vector< int > imageBorderIndices;
+		target->findVirtualBorderPoints( *pointCloudIn, imageBorderIndices );
+		target->markNoUpdateAtPoints( *pointCloudIn, imageBorderIndices );
+	}
+
 	target->evaluateSurfels();
 	target->octree_->root_->establishNeighbors();
 	target->buildShapeTextureFeatures();
+
+	if( params_.usePointFeatures_ ) {
+//		target->params_.pixelNoise = 4.0;
+//		target->params_.depthNoiseFactor = 2.0;
+		target->addImagePointFeatures( img_rgb, *pointCloudIn );
+	}
+
 
 	bool generateKeyFrame = false;
 
@@ -296,14 +362,32 @@ bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXY
 	}
 	else {
 
+
 		pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrSrc;
 		pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrTgt;
 		MultiResolutionColorSurfelRegistration reg;
-		bool retVal = reg.estimateTransformation( *( keyFrames_[ referenceKeyFrameId_ ]->map_ ), *target, incTransform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt,
-				GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+		reg.params_.registerFeatures_ = params_.usePointFeatures_;
+		reg.params_.debugFeatures_ = params_.debugPointFeatures_;
+	//	reg.params_.pointFeatureMatchingCoarseImagePosMahalDist_ = 2.0*reg.params_.pointFeatureMatchingFineImagePosMahalDist_;
+
+		if( params_.regularizePose_ ) {
+			Eigen::Matrix< double, 6, 1 > pose_mean, pose_var;
+			pose_mean.block<3,1>(0,0) = incTransform.block<3,1>(0,3);
+			pose_mean.block<3,1>(3,0) = Eigen::Quaterniond( incTransform.block<3,3>(0,0) ).coeffs().block<3,1>(0,0);
+			pose_var = 1.0*Eigen::Matrix< double, 6, 1 >::Ones();
+			reg.setPriorPose( true, pose_mean, pose_var );
+		}
+
+		bool retVal = reg.estimateTransformation( *(keyFrames_[referenceKeyFrameId_]->map_), *target, incTransform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
 		if( REGISTER_TWICE )
-			retVal = reg.estimateTransformation( *( keyFrames_[ referenceKeyFrameId_ ]->map_ ), *target, incTransform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt,
-					GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+			retVal = reg.estimateTransformation( *(keyFrames_[referenceKeyFrameId_]->map_), *target, incTransform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+
+		if( !retVal ) {
+			std::cout << "SLAM: lost track in current frame\n";
+			incTransform = lastTransform_;
+		}
+
+		deltaIncTransform_ = lastTransform_.inverse() * incTransform;
 
 		if( retVal ) {
 			lastTransform_ = incTransform;
@@ -314,13 +398,13 @@ bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXY
 				generateKeyFrame = true;
 			}
 		}
-		else {
-			std::cout << "SLAM: lost track in current frame\n";
-			exit( -1 );
-			return false;
-		}
+
 
 	}
+
+	std::cout << "creating and registering the image took " << sw.getTime() << "\n";
+	sw.reset();
+
 
 	if( generateKeyFrame ) {
 
@@ -333,6 +417,7 @@ bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXY
 
 		keyFrame->map_ = target;
 
+
 		// evaluate pose covariance between keyframes..
 		Eigen::Matrix< double, 6, 6 > poseCov;
 
@@ -341,72 +426,96 @@ bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXY
 			pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrSrc;
 			pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrTgt;
 			MultiResolutionColorSurfelRegistration reg;
-			reg.estimatePoseCovariance( poseCov, *( keyFrames_[ referenceKeyFrameId_ ]->map_ ), *( keyFrame->map_ ), lastTransform_, register_start_resolution, register_stop_resolution );
+			reg.estimatePoseCovariance( poseCov, *(keyFrames_[referenceKeyFrameId_]->map_), *(keyFrame->map_), lastTransform_, register_start_resolution, register_stop_resolution );
 
-			Eigen::Matrix4d Tinv = lastTransform_.inverse();
-			double logLikelihood1 = reg.matchLogLikelihood( *( keyFrames_[ referenceKeyFrameId_ ]->map_ ), *( keyFrame->map_ ), Tinv );
-			double logLikelihood2 = reg.matchLogLikelihood( *( keyFrame->map_ ), *( keyFrames_[ referenceKeyFrameId_ ]->map_ ), lastTransform_ );
-			std::cout << "new key frame first edge log likelihood: " << logLikelihood2 << "\n";
+//			Eigen::Matrix4d Tinv = lastTransform_.inverse();
+//			double logLikelihood1 = reg.matchLogLikelihood( *(keyFrames_[referenceKeyFrameId_]->map_), *(keyFrame->map_), Tinv );
+//			double logLikelihood2 = reg.matchLogLikelihood( *(keyFrame->map_), *(keyFrames_[referenceKeyFrameId_]->map_), lastTransform_ );
+//			std::cout << "new key frame first edge log likelihood: " << logLikelihood2 << "\n";
 
-			// store average log likelihood information of edges to the keyframes
-			keyFrames_[ referenceKeyFrameId_ ]->sumLogLikelihood_ += logLikelihood1;
-			keyFrames_[ referenceKeyFrameId_ ]->numEdges_ += 1.0;
-
-			keyFrame->sumLogLikelihood_ += logLikelihood2;
-			keyFrame->numEdges_ += 1.0;
 		}
 		else
 			poseCov.setZero();
 
+		MultiResolutionColorSurfelRegistration reg;
+		double logLikelihood2 = reg.selfMatchLogLikelihood( *(keyFrame->map_) );
+		keyFrame->sumLogLikelihood_ += logLikelihood2;
+		keyFrame->numEdges_ += 1.0;
+
 		// extend slam graph with vertex for new key frame and with one edge towards the last keyframe..
 		unsigned int keyFrameId = addKeyFrame( referenceKeyFrameId_, keyFrame, lastTransform_ );
 		if( optimizer_->vertices().size() > 1 ) {
-			if( !addEdge( keyFrames_[ referenceKeyFrameId_ ]->nodeId_, keyFrames_[ keyFrameId ]->nodeId_, lastTransform_, poseCov ) ) {
+			if( !addEdge( keyFrames_[referenceKeyFrameId_]->nodeId_, keyFrames_[keyFrameId]->nodeId_, lastTransform_, poseCov ) ) {
 				std::cout << "WARNING: new key frame not connected to graph!\n";
-				assert( false );
+				assert(false);
 			}
 		}
+
 
 		assert( optimizer_->vertices().size() == keyFrames_.size() );
 
 	}
 
-	// try to match between older key frames (that are close in optimized pose)
-	connectClosePoses( startResolution, stopResolution, true );
+	std::cout << "generating key frame took " << sw.getTime() << "\n";
+	sw.reset();
+
+	if( !generateKeyFrame ) {
+		// try to match between older key frames (that are close in optimized pose)
+		if( !connectClosePoses( startResolution, stopResolution, true ) )
+			;
+//			refineWorstEdgeRandom( startResolution, stopResolution );
+	}
+
+	std::cout << "connect close poses took " << sw.getTime() << "\n";
+
 
 	if( optimizer_->vertices().size() >= 3 ) {
+
+//		static std::ofstream outfile("g2o_timing.txt");
+
 		// optimize slam graph
 		std::cout << "optimizing...\n";
+		pcl::StopWatch stopwatch;
+		stopwatch.reset();
 		optimizer_->initializeOptimization();
-		optimizer_->optimize( 1 );
+		optimizer_->optimize(5);
 		optimizer_->computeActiveErrors();
-		std::cout << optimizer_->vertices().size() << " nodes, " << optimizer_->edges().size() << " edges, " << "chi2: " << optimizer_->chi2() << "\n";
+		double deltat = stopwatch.getTimeSeconds();
+		std::cout << optimizer_->vertices().size() << " nodes, "
+				<< optimizer_->edges().size() << " edges, "
+				<< "chi2: " << optimizer_->chi2() << "\n";
+
+
+//		outfile << std::fixed << std::setprecision(10) << deltat << "\n";
 	}
+
+
 
 	// get estimated transform in map frame
 	unsigned int oldReferenceId_ = referenceKeyFrameId_;
-	g2o::VertexSE3* v_ref_old = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[ oldReferenceId_ ]->nodeId_ ) );
+	g2o::VertexSE3* v_ref_old = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[oldReferenceId_]->nodeId_ ) );
 	Eigen::Matrix4d pose_ref_old = v_ref_old->estimate().matrix();
 	Eigen::Matrix4d tracked_pose = pose_ref_old * lastTransform_;
 
-	unsigned int bestId = optimizer_->vertices().size() - 1;
+	unsigned int bestId = optimizer_->vertices().size()-1;
+
 
 	// select closest key frame to current camera pose for further tracking
 	// in this way, we do not create unnecessary key frames..
-	float bestAngle = std::numeric_limits< float >::max();
-	float bestDist = std::numeric_limits< float >::max();
+	float bestAngle = std::numeric_limits<float>::max();
+	float bestDist = std::numeric_limits<float>::max();
 	for( unsigned int kf_id = 0; kf_id < keyFrames_.size(); kf_id++ ) {
 
-		g2o::VertexSE3* v = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[ kf_id ]->nodeId_ ) );
+		g2o::VertexSE3* v = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[kf_id]->nodeId_ ) );
 
 		Eigen::Matrix4d v_pose = v->estimate().matrix();
 
 		Eigen::Matrix4d diffTransform = v_pose.inverse() * tracked_pose;
 
-		double angle = Eigen::AngleAxisd( diffTransform.block< 3, 3 >( 0, 0 ) ).angle();
-		double dist = diffTransform.block< 3, 1 >( 0, 3 ).norm();
+		double angle = Eigen::AngleAxisd( diffTransform.block<3,3>(0,0) ).angle();
+		double dist = diffTransform.block<3,1>(0,3).norm();
 
-		if( poseIsClose( diffTransform ) && fabsf( angle ) < bestAngle && dist < bestDist ) {
+		if( poseIsClose(diffTransform) && fabsf( angle ) < bestAngle && dist < bestDist ) {
 			bestAngle = angle;
 			bestDist = dist;
 			bestId = kf_id;
@@ -417,48 +526,57 @@ bool SLAM::addImage( const cv::Mat& img_rgb, const pcl::PointCloud< pcl::PointXY
 	// try to add new edge between the two reference
 	// if not possible, we keep the old reference frame such that a new key frame will added later that connects the two reference frames
 	bool switchReferenceID = true;
-	g2o::VertexSE3* v_ref = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[ referenceKeyFrameId_ ]->nodeId_ ) );
+	g2o::VertexSE3* v_ref = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[referenceKeyFrameId_]->nodeId_ ) );
+
 
 	if( switchReferenceID ) {
 		referenceKeyFrameId_ = bestId;
 	}
 
 	// set lastTransform_ to pose wrt reference key frame
-	v_ref = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[ referenceKeyFrameId_ ]->nodeId_ ) );
+	v_ref = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( keyFrames_[referenceKeyFrameId_]->nodeId_ ) );
 	Eigen::Matrix4d pose_ref = v_ref->estimate().matrix();
 	lastTransform_ = pose_ref.inverse() * tracked_pose;
+
 
 	return true;
 
 }
 
-void SLAM::connectClosePoses( float register_start_resolution, float register_stop_resolution, bool random ) {
+bool SLAM::connectClosePoses( float register_start_resolution, float register_stop_resolution, bool random ) {
 
 	// random == true: randomly check only one vertex, the closer, the more probable the check
 	if( random ) {
 
-		const double sigma2_dist = 0.7 * 0.7;
-		const double sigma2_angle = 0.3 * 0.3;
+		const double sigma2_dist = 0.7*0.7;
+		const double sigma2_angle = 0.5*0.5;
 
+//		for( unsigned int kf1_id = 0; kf1_id < keyFrames_.size(); kf1_id++ ) {
 		for( unsigned int kf1_id = referenceKeyFrameId_; kf1_id <= referenceKeyFrameId_; kf1_id++ ) {
 
-			unsigned int v1_id = keyFrames_[ kf1_id ]->nodeId_;
+			unsigned int v1_id = keyFrames_[kf1_id]->nodeId_;
 			g2o::VertexSE3* v1 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v1_id ) );
 
-			std::vector< int > vertices;
+			std::vector< int > vertices, keyframes;
 			std::vector< double > probs;
 			double sumProbs = 0.0;
 
+			double bestProb = 0.0;
+			unsigned int bestIdx = 0;
+
 			for( unsigned int kf2_id = 0; kf2_id < kf1_id; kf2_id++ ) {
 
-				unsigned int v2_id = keyFrames_[ kf2_id ]->nodeId_;
+				if( keyFrames_[kf1_id]->checkedKeyFrames_.find( kf2_id ) != keyFrames_[kf1_id]->checkedKeyFrames_.end() )
+					continue;
+
+				unsigned int v2_id = keyFrames_[kf2_id]->nodeId_;
 				g2o::VertexSE3* v2 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v2_id ) );
 
 				// check if edge already exists between the vertices
 				bool foundEdge = false;
 				for( EdgeSet::iterator it = v1->edges().begin(); it != v1->edges().end(); ++it ) {
 					g2o::EdgeSE3* edge = dynamic_cast< g2o::EdgeSE3* >( *it );
-					if( ( edge->vertices()[ 0 ]->id() == v1_id && edge->vertices()[ 1 ]->id() == v2_id ) || ( edge->vertices()[ 0 ]->id() == v2_id && edge->vertices()[ 1 ]->id() == v1_id ) ) {
+					if( ( edge->vertices()[0]->id() == v1_id && edge->vertices()[1]->id() == v2_id ) || ( edge->vertices()[0]->id() == v2_id && edge->vertices()[1]->id() == v1_id ) ) {
 						foundEdge = true;
 						break;
 					}
@@ -466,8 +584,9 @@ void SLAM::connectClosePoses( float register_start_resolution, float register_st
 				if( foundEdge )
 					continue;
 
+
 				// diff transform from v2 to v1
-				Eigen::Matrix4d diffTransform = ( v1->estimate().inverse() * v2->estimate() ).matrix();
+				Eigen::Matrix4d diffTransform = (v1->estimate().inverse() * v2->estimate()).matrix();
 
 				if( poseIsFar( diffTransform ) )
 					continue;
@@ -484,6 +603,12 @@ void SLAM::connectClosePoses( float register_start_resolution, float register_st
 					sumProbs += probDist*probAngle;
 					probs.push_back( sumProbs );
 					vertices.push_back( v2_id );
+					keyframes.push_back( kf2_id );
+
+					if( probDist*probAngle > bestProb ) {
+						bestProb = probDist*probAngle;
+						bestIdx = vertices.size()-1;
+					}
 
 				}
 
@@ -492,17 +617,26 @@ void SLAM::connectClosePoses( float register_start_resolution, float register_st
 			if( probs.size() == 0 )
 				continue;
 
+			unsigned int i = bestIdx;
+
 			// draw random number in [0,sumProbs]
-			double checkProb = (double) rand() / (double) ( RAND_MAX + 1.0 ) * sumProbs;
-			for( int i = 0; i < vertices.size(); i++ ) {
-				if( checkProb <= probs[ i ] ) {
-					int v2_id = vertices[ i ];
+//			double checkProb = (double)rand() / (double)(RAND_MAX + 1.0) * sumProbs;
+//			for( int i = 0; i < vertices.size(); i++ ) {
+//				if( checkProb <= probs[i] ) {
+					int v2_id = vertices[i];
 					g2o::VertexSE3* v2 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v2_id ) );
-					Eigen::Matrix4d diffTransform = ( v1->estimate().inverse() * v2->estimate() ).matrix();
+					Eigen::Matrix4d diffTransform = (v1->estimate().inverse() * v2->estimate()).matrix();
+
 					bool retVal = addEdge( v1_id, v2_id, diffTransform, register_start_resolution, register_stop_resolution );
-					break;
-				}
-			}
+					if( retVal ) {
+						keyFrames_[kf1_id]->checkedKeyFrames_.clear();
+						keyFrames_[keyframes[i]]->checkedKeyFrames_.clear();
+					}
+					else
+						keyFrames_[kf1_id]->checkedKeyFrames_.insert( keyframes[i] );
+					return true;
+//				}
+//			}
 
 		}
 
@@ -514,8 +648,8 @@ void SLAM::connectClosePoses( float register_start_resolution, float register_st
 
 			for( unsigned int kf2_id = 0; kf2_id < kf1_id; kf2_id++ ) {
 
-				unsigned int v1_id = keyFrames_[ kf1_id ]->nodeId_;
-				unsigned int v2_id = keyFrames_[ kf2_id ]->nodeId_;
+				unsigned int v1_id = keyFrames_[kf1_id]->nodeId_;
+				unsigned int v2_id = keyFrames_[kf2_id]->nodeId_;
 				g2o::VertexSE3* v1 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v1_id ) );
 				g2o::VertexSE3* v2 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v2_id ) );
 
@@ -523,7 +657,7 @@ void SLAM::connectClosePoses( float register_start_resolution, float register_st
 				bool foundEdge = false;
 				for( EdgeSet::iterator it = v1->edges().begin(); it != v1->edges().end(); ++it ) {
 					g2o::EdgeSE3* edge = dynamic_cast< g2o::EdgeSE3* >( *it );
-					if( ( edge->vertices()[ 0 ]->id() == v1_id && edge->vertices()[ 1 ]->id() == v2_id ) || ( edge->vertices()[ 0 ]->id() == v2_id && edge->vertices()[ 1 ]->id() == v1_id ) ) {
+					if( ( edge->vertices()[0]->id() == v1_id && edge->vertices()[1]->id() == v2_id ) || ( edge->vertices()[0]->id() == v2_id && edge->vertices()[1]->id() == v1_id ) ) {
 						foundEdge = true;
 						break;
 					}
@@ -531,9 +665,11 @@ void SLAM::connectClosePoses( float register_start_resolution, float register_st
 				if( foundEdge )
 					continue;
 
+
+
 				// check if poses close
 				// diff transform from v2 to v1
-				Eigen::Matrix4d diffTransform = ( v1->estimate().inverse() * v2->estimate() ).matrix();
+				Eigen::Matrix4d diffTransform = (v1->estimate().inverse() * v2->estimate()).matrix();
 				if( poseIsFar( diffTransform ) )
 					continue;
 
@@ -543,42 +679,51 @@ void SLAM::connectClosePoses( float register_start_resolution, float register_st
 
 		}
 
+		return true;
+
 	}
+
+	return false;
 
 }
 
+
 bool SLAM::refineEdge( g2o::EdgeSE3* edge, float register_start_resolution, float register_stop_resolution ) {
 
-	unsigned int v1_id = edge->vertices()[ 0 ]->id();
-	unsigned int v2_id = edge->vertices()[ 1 ]->id();
+	unsigned int v1_id = edge->vertices()[0]->id();
+	unsigned int v2_id = edge->vertices()[1]->id();
 
 	g2o::VertexSE3* v1 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v1_id ) );
 	g2o::VertexSE3* v2 = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v2_id ) );
 
-	Eigen::Matrix4d diffTransform = ( v1->estimate().inverse() * v2->estimate() ).matrix();
+	Eigen::Matrix4d diffTransform = (v1->estimate().inverse() * v2->estimate()).matrix();
 
 	// register maps with pose guess from graph
 	Eigen::Matrix< double, 6, 6 > poseCov;
 
-	if( keyFrameNodeMap_.find( v1_id ) == keyFrameNodeMap_.end() || keyFrameNodeMap_.find( v2_id ) == keyFrameNodeMap_.end() )
+	if( keyFrameNodeMap_.find( v1_id ) == keyFrameNodeMap_.end() || keyFrameNodeMap_.find( v2_id ) == keyFrameNodeMap_.end() ) {
 		return true; // dont delete this edge!
+	}
+
 
 	pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrSrc;
 	pcl::PointCloud< pcl::PointXYZRGB >::Ptr corrTgt;
 	MultiResolutionColorSurfelRegistration reg;
-	bool retVal = reg.estimateTransformation( *( keyFrameNodeMap_[ v1_id ]->map_ ), *( keyFrameNodeMap_[ v2_id ]->map_ ), diffTransform, register_start_resolution, register_stop_resolution, corrSrc,
-			corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+	reg.params_.registerFeatures_ = params_.usePointFeatures_;
+	reg.params_.debugFeatures_ = params_.debugPointFeatures_;
+	bool retVal = reg.estimateTransformation( *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), diffTransform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
 	if( REGISTER_TWICE )
-		retVal = reg.estimateTransformation( *( keyFrameNodeMap_[ v1_id ]->map_ ), *( keyFrameNodeMap_[ v2_id ]->map_ ), diffTransform, register_start_resolution, register_stop_resolution, corrSrc,
-				corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
+		retVal = reg.estimateTransformation( *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), diffTransform, register_start_resolution, register_stop_resolution, corrSrc, corrTgt, GRADIENT_ITS, NEWTON_FEAT_ITS, NEWTON_ITS );
 	if( !retVal )
 		return false;
 
-	retVal &= reg.estimatePoseCovariance( poseCov, *( keyFrameNodeMap_[ v1_id ]->map_ ), *( keyFrameNodeMap_[ v2_id ]->map_ ), diffTransform, register_start_resolution, register_stop_resolution );
+	retVal &= reg.estimatePoseCovariance( poseCov, *(keyFrameNodeMap_[v1_id]->map_), *(keyFrameNodeMap_[v2_id]->map_), diffTransform, register_start_resolution, register_stop_resolution );
+
+
 
 	if( retVal ) {
 
-		g2o::SE3Quat measurement_mean( Eigen::Quaterniond( diffTransform.block< 3, 3 >( 0, 0 ) ), diffTransform.block< 3, 1 >( 0, 3 ) );
+		g2o::SE3Quat measurement_mean( Eigen::Quaterniond( diffTransform.block<3,3>(0,0) ), diffTransform.block<3,1>(0,3) );
 		Eigen::Matrix< double, 6, 6 > measurement_information = poseCov.inverse();
 
 		edge->setMeasurement( measurement_mean );
@@ -590,7 +735,9 @@ bool SLAM::refineEdge( g2o::EdgeSE3* edge, float register_start_resolution, floa
 
 }
 
+
 void SLAM::refine( unsigned int refineIterations, unsigned int optimizeIterations, float register_start_resolution, float register_stop_resolution ) {
+
 
 	if( optimizer_->vertices().size() >= 3 ) {
 
@@ -615,7 +762,8 @@ void SLAM::refine( unsigned int refineIterations, unsigned int optimizeIteration
 			}
 
 			for( unsigned int j = 0; j < removeEdges.size(); j++ )
-				optimizer_->removeEdge( removeEdges[ j ] );
+				optimizer_->removeEdge( removeEdges[j] );
+
 
 			// reoptimize for 10 iterations
 			optimizer_->initializeOptimization();
@@ -623,18 +771,21 @@ void SLAM::refine( unsigned int refineIterations, unsigned int optimizeIteration
 
 		}
 
+
 		// optimize slam graph
 		std::cout << "optimizing...\n";
 		optimizer_->initializeOptimization();
 		optimizer_->optimize( optimizeIterations );
 		optimizer_->computeActiveErrors();
-		std::cout << optimizer_->vertices().size() << " nodes, " << optimizer_->edges().size() << " edges, " << "chi2: " << optimizer_->chi2() << "\n";
+		std::cout << optimizer_->vertices().size() << " nodes, "
+				<< optimizer_->edges().size() << " edges, "
+				<< "chi2: " << optimizer_->chi2() << "\n";
 	}
 
 }
 
-void SLAM::refineInConvexHull( unsigned int refineIterations, unsigned int optimizeIterations, float register_start_resolution, float register_stop_resolution, float minResolution,
-		const Eigen::Matrix4d& referenceTransform, float minHeight, float maxHeight, std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull ) {
+
+void SLAM::refineInConvexHull( unsigned int refineIterations, unsigned int optimizeIterations, float register_start_resolution, float register_stop_resolution, float minResolution, const Eigen::Matrix4d& referenceTransform, float minHeight, float maxHeight, std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull ) {
 
 	const float min_resolution = minResolution;
 	const float max_radius = 30.f;
@@ -647,9 +798,9 @@ void SLAM::refineInConvexHull( unsigned int refineIterations, unsigned int optim
 	pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud_selected_points( new pcl::PointCloud< pcl::PointXYZRGB >() );
 	for( unsigned int j = 0; j < convexHull.size(); j++ ) {
 		pcl::PointXYZRGB p;
-		p.x = convexHull[ j ]( 0 );
-		p.y = convexHull[ j ]( 1 );
-		p.z = convexHull[ j ]( 2 );
+		p.x = convexHull[j](0);
+		p.y = convexHull[j](1);
+		p.z = convexHull[j](2);
 		cloud_selected_points->points.push_back( p );
 	}
 
@@ -657,6 +808,7 @@ void SLAM::refineInConvexHull( unsigned int refineIterations, unsigned int optim
 	pcl::ConvexHull< pcl::PointXYZRGB > chull;
 	chull.setInputCloud( cloud_selected_points );
 	chull.reconstruct( *cloud_convex_hull );
+
 
 	for( unsigned int v_id = 0; v_id < optimizer_->vertices().size(); v_id++ ) {
 
@@ -667,42 +819,47 @@ void SLAM::refineInConvexHull( unsigned int refineIterations, unsigned int optim
 		Eigen::Matrix4d transform = referenceTransform * v_pose;
 
 		pcl::PointCloud< pcl::PointXYZRGB >::Ptr transformedCloud = pcl::PointCloud< pcl::PointXYZRGB >::Ptr( new pcl::PointCloud< pcl::PointXYZRGB >() );
-		pcl::transformPointCloud( *( keyFrames_[ v_id ]->cloud_ ), *transformedCloud, transform.cast< float >() );
+		pcl::transformPointCloud( *(keyFrames_[v_id]->cloud_), *transformedCloud, transform.cast<float>() );
 
-		transformedCloud->sensor_origin_ = transform.block< 4, 1 >( 0, 3 ).cast< float >();
-		transformedCloud->sensor_orientation_ = Eigen::Quaternionf( transform.block< 3, 3 >( 0, 0 ).cast< float >() );
+		transformedCloud->sensor_origin_ = transform.block<4,1>(0,3).cast<float>();
+		transformedCloud->sensor_orientation_ = Eigen::Quaternionf( transform.block<3,3>(0,0).cast<float>() );
+
 
 		// get indices in convex hull
 		pcl::PointIndices::Ptr object_indices( new pcl::PointIndices() );
 		hull_limiter.setInputCloud( transformedCloud );
 		hull_limiter.setInputPlanarHull( cloud_convex_hull );
 		hull_limiter.setHeightLimits( minHeight, maxHeight );
-		hull_limiter.setViewPoint( transformedCloud->sensor_origin_[ 0 ], transformedCloud->sensor_origin_[ 1 ], transformedCloud->sensor_origin_[ 2 ] );
+		hull_limiter.setViewPoint( transformedCloud->sensor_origin_[0], transformedCloud->sensor_origin_[1], transformedCloud->sensor_origin_[2] );
 		hull_limiter.segment( *object_indices );
 
+
 		pcl::PointCloud< pcl::PointXYZRGB >::Ptr insideCloud = pcl::PointCloud< pcl::PointXYZRGB >::Ptr( new pcl::PointCloud< pcl::PointXYZRGB >() );
-		*insideCloud = *( keyFrames_[ v_id ]->cloud_ );
+		*insideCloud = *(keyFrames_[v_id]->cloud_);
 
 		// mark points outside of convex hull nan
-		std::vector< int > markNAN( insideCloud->points.size(), 1 );
+		std::vector<int> markNAN( insideCloud->points.size(), 1 );
 		for( unsigned int i = 0; i < object_indices->indices.size(); i++ ) {
 
-			markNAN[ object_indices->indices[ i ] ] = 0;
+			markNAN[ object_indices->indices[i] ] = 0;
 
 		}
 
 		for( unsigned int i = 0; i < markNAN.size(); i++ ) {
 
-			if( markNAN[ i ] ) {
+			if( markNAN[i] ) {
 
-				insideCloud->points[ i ].x = insideCloud->points[ i ].y = insideCloud->points[ i ].z = std::numeric_limits< float >::quiet_NaN();
+				insideCloud->points[ i ].x =
+						insideCloud->points[ i ].y =
+								insideCloud->points[ i ].z = std::numeric_limits<float>::quiet_NaN();
 
 			}
 
 		}
 
+
 		// generate new map for key frame
-		boost::shared_ptr< KeyFrame > keyFrame = keyFrames_[ v_id ];
+		boost::shared_ptr< KeyFrame > keyFrame = keyFrames_[v_id];
 		keyFrame->cloud_ = insideCloud;
 		keyFrame->map_ = boost::shared_ptr< MultiResolutionSurfelMap >( new MultiResolutionSurfelMap( min_resolution, max_radius ) );
 		keyFrame->map_->imageAllocator_ = imageAllocator_;
@@ -714,15 +871,18 @@ void SLAM::refineInConvexHull( unsigned int refineIterations, unsigned int optim
 		keyFrame->map_->octree_->root_->establishNeighbors();
 		keyFrame->map_->buildShapeTextureFeatures();
 
+
+
 	}
+
 
 	refine( refineIterations, optimizeIterations, register_start_resolution, register_stop_resolution );
 
 }
 
-bool edgeCompareChi( const g2o::HyperGraph::Edge* a, const g2o::HyperGraph::Edge* b ) {
-	return ( dynamic_cast< const g2o::EdgeSE3* >( a ) )->chi2() > ( dynamic_cast< const g2o::EdgeSE3* >( b ) )->chi2();
-}
+
+bool edgeCompareChi( const g2o::HyperGraph::Edge* a, const g2o::HyperGraph::Edge* b ) { return  (dynamic_cast< const g2o::EdgeSE3* >( a ))->chi2() > (dynamic_cast< const g2o::EdgeSE3* >( b ))->chi2(); }
+
 
 void SLAM::refineWorstEdges( float fraction, float register_start_resolution, float register_stop_resolution ) {
 
@@ -736,20 +896,60 @@ void SLAM::refineWorstEdges( float fraction, float register_start_resolution, fl
 		sortedEdges.assign( optimizer_->edges().begin(), optimizer_->edges().end() );
 		std::sort( sortedEdges.begin(), sortedEdges.end(), edgeCompareChi );
 
-		std::cout << dynamic_cast< g2o::EdgeSE3* >( *sortedEdges.begin() )->chi2() << " " << dynamic_cast< g2o::EdgeSE3* >( *( sortedEdges.end() - 1 ) )->chi2() << "\n";
+		std::cout << dynamic_cast< g2o::EdgeSE3* >(*sortedEdges.begin())->chi2() << " " << dynamic_cast< g2o::EdgeSE3* >(*(sortedEdges.end()-1))->chi2() << "\n";
+
 
 		std::vector< g2o::EdgeSE3* > removeEdges;
 
-		g2o::EdgeSE3* edge = dynamic_cast< g2o::EdgeSE3* >( sortedEdges[ refineEdgeIdx ] );
+		g2o::EdgeSE3* edge = dynamic_cast< g2o::EdgeSE3* >( sortedEdges[refineEdgeIdx] );
 
 		bool retVal = refineEdge( edge, register_start_resolution, register_stop_resolution );
 
+
 		for( unsigned int j = 0; j < removeEdges.size(); j++ )
-			optimizer_->removeEdge( removeEdges[ j ] );
+			optimizer_->removeEdge( removeEdges[j] );
 
 	}
 
 }
+
+void SLAM::refineWorstEdgeRandom( float register_start_resolution, float register_stop_resolution ) {
+
+	if( optimizer_->vertices().size() >= 3 ) {
+
+		// reestimate fraction of edges with worst chi2
+		std::vector< g2o::HyperGraph::Edge* > sortedEdges;
+		sortedEdges.assign( optimizer_->edges().begin(), optimizer_->edges().end() );
+		std::sort( sortedEdges.begin(), sortedEdges.end(), edgeCompareChi );
+
+		double sumChi2 = 0.0;
+		for( unsigned int i = 0; i < sortedEdges.size(); i++ ) {
+			sumChi2 += dynamic_cast< g2o::EdgeSE3* >( sortedEdges[i] )->chi2();
+		}
+		double checkProb = (double)rand() / (double)(RAND_MAX + 1.0) * sumChi2;
+
+		size_t refineEdgeIdx = 0;
+		sumChi2 = 0.0;
+		for( unsigned int i = 0; i < sortedEdges.size(); i++ ) {
+			sumChi2 += dynamic_cast< g2o::EdgeSE3* >( sortedEdges[i] )->chi2();
+
+			if( sumChi2 > checkProb ) {
+				refineEdgeIdx = i;
+				break;
+			}
+		}
+
+		g2o::EdgeSE3* edge = dynamic_cast< g2o::EdgeSE3* >( sortedEdges[refineEdgeIdx] );
+
+		std::cout << "refining " << refineEdgeIdx << "\n";
+
+		bool retVal = refineEdge( edge, register_start_resolution, register_stop_resolution );
+
+
+	}
+
+}
+
 
 void SLAM::dumpError() {
 
@@ -764,17 +964,21 @@ void SLAM::dumpError() {
 	}
 }
 
+
+
 boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMap( const Eigen::Matrix4d& referenceTransform, float minResolution ) {
+
 
 	const float min_resolution = minResolution;
 	const float max_radius = 30.f;
+
 
 	boost::shared_ptr< MultiResolutionSurfelMap > graphmap = boost::shared_ptr< MultiResolutionSurfelMap >( new MultiResolutionSurfelMap( min_resolution, max_radius ) );
 	graphmap->imageAllocator_ = imageAllocator_;
 
 	for( unsigned int v_id = 0; v_id < optimizer_->vertices().size(); v_id++ ) {
 
-		if( keyFrameNodeMap_.find( v_id ) == keyFrameNodeMap_.end() )
+		if( keyFrameNodeMap_.find(v_id) == keyFrameNodeMap_.end() )
 			continue;
 
 		g2o::VertexSE3* v = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v_id ) );
@@ -787,18 +991,19 @@ boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMap( const Eigen::Matrix4
 		Eigen::Matrix4d transform = referenceTransform * v_pose;
 
 		pcl::PointCloud< pcl::PointXYZRGB > transformedCloud;
-		pcl::transformPointCloud( *( keyFrameNodeMap_[ v_id ]->cloud_ ), transformedCloud, transform.cast< float >() );
+		pcl::transformPointCloud( *(keyFrameNodeMap_[v_id]->cloud_), transformedCloud, transform.cast<float>() );
 
-		transformedCloud.sensor_origin_ = transform.block< 4, 1 >( 0, 3 ).cast< float >();
-		transformedCloud.sensor_orientation_ = Eigen::Quaternionf( transform.block< 3, 3 >( 0, 0 ).cast< float >() );
+		transformedCloud.sensor_origin_ = transform.block<4,1>(0,3).cast<float>();
+		transformedCloud.sensor_orientation_ = Eigen::Quaternionf( transform.block<3,3>(0,0).cast<float>() );
+
 
 		// add keyframe to map
 		graphmap->setApplyUpdate( false );
-		graphmap->markUpdateImprovedEffViewDistSurfels( transformedCloud.sensor_origin_.block< 3, 1 >( 0, 0 ) );
+		graphmap->markUpdateImprovedEffViewDistSurfels( transformedCloud.sensor_origin_.block<3,1>(0,0) );
 		std::vector< int > imageBorderIndices;
-		graphmap->findVirtualBorderPoints( *( keyFrameNodeMap_[ v_id ]->cloud_ ), imageBorderIndices );
+		graphmap->findVirtualBorderPoints( *(keyFrameNodeMap_[v_id]->cloud_), imageBorderIndices );
 		graphmap->markNoUpdateAtPoints( transformedCloud, imageBorderIndices );
-		graphmap->unevaluateSurfels();
+//		graphmap->unevaluateSurfels();
 		graphmap->addImage( transformedCloud );
 		graphmap->clearUpdateSurfelsAtPoints( transformedCloud, imageBorderIndices ); // only new surfels at these points have up_to_date == false !
 		graphmap->octree_->root_->establishNeighbors();
@@ -807,14 +1012,18 @@ boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMap( const Eigen::Matrix4
 		graphmap->evaluateSurfels();
 		graphmap->buildShapeTextureFeatures();
 
+
+
+
+
 	}
 
 	return graphmap;
 
 }
 
-boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMapInConvexHull( const Eigen::Matrix4d& referenceTransform, float minResolution, float minHeight, float maxHeight,
-		std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull ) {
+
+boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMapInConvexHull( const Eigen::Matrix4d& referenceTransform, float minResolution, float minHeight, float maxHeight, std::vector< Eigen::Vector3f, Eigen::aligned_allocator< Eigen::Vector3f > > convexHull ) {
 
 	const float min_resolution = minResolution;
 	const float max_radius = 30.f;
@@ -826,9 +1035,9 @@ boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMapInConvexHull( const Ei
 	pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloud_selected_points( new pcl::PointCloud< pcl::PointXYZRGB >() );
 	for( unsigned int j = 0; j < convexHull.size(); j++ ) {
 		pcl::PointXYZRGB p;
-		p.x = convexHull[ j ]( 0 );
-		p.y = convexHull[ j ]( 1 );
-		p.z = convexHull[ j ]( 2 );
+		p.x = convexHull[j](0);
+		p.y = convexHull[j](1);
+		p.z = convexHull[j](2);
 		cloud_selected_points->points.push_back( p );
 	}
 
@@ -842,7 +1051,7 @@ boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMapInConvexHull( const Ei
 
 	for( unsigned int v_id = 0; v_id < optimizer_->vertices().size(); v_id++ ) {
 
-		if( keyFrameNodeMap_.find( v_id ) == keyFrameNodeMap_.end() )
+		if( keyFrameNodeMap_.find(v_id) == keyFrameNodeMap_.end() )
 			continue;
 
 		g2o::VertexSE3* v = dynamic_cast< g2o::VertexSE3* >( optimizer_->vertex( v_id ) );
@@ -855,39 +1064,75 @@ boost::shared_ptr< MultiResolutionSurfelMap > SLAM::getMapInConvexHull( const Ei
 		Eigen::Matrix4d transform = referenceTransform * v_pose;
 
 		pcl::PointCloud< pcl::PointXYZRGB >::Ptr transformedCloud = pcl::PointCloud< pcl::PointXYZRGB >::Ptr( new pcl::PointCloud< pcl::PointXYZRGB >() );
-		pcl::transformPointCloud( *( keyFrameNodeMap_[ v_id ]->cloud_ ), *transformedCloud, transform.cast< float >() );
+		pcl::transformPointCloud( *(keyFrameNodeMap_[v_id]->cloud_), *transformedCloud, transform.cast<float>() );
 
-		transformedCloud->sensor_origin_ = transform.block< 4, 1 >( 0, 3 ).cast< float >();
-		transformedCloud->sensor_orientation_ = Eigen::Quaternionf( transform.block< 3, 3 >( 0, 0 ).cast< float >() );
+		transformedCloud->sensor_origin_ = transform.block<4,1>(0,3).cast<float>();
+		transformedCloud->sensor_orientation_ = Eigen::Quaternionf( transform.block<3,3>(0,0).cast<float>() );
+
 
 		// get indices in convex hull
 		pcl::PointIndices::Ptr object_indices( new pcl::PointIndices() );
 		hull_limiter.setInputCloud( transformedCloud );
 		hull_limiter.setInputPlanarHull( cloud_convex_hull );
 		hull_limiter.setHeightLimits( minHeight, maxHeight );
-		hull_limiter.setViewPoint( transformedCloud->sensor_origin_[ 0 ], transformedCloud->sensor_origin_[ 1 ], transformedCloud->sensor_origin_[ 2 ] );
+		hull_limiter.setViewPoint( transformedCloud->sensor_origin_[0], transformedCloud->sensor_origin_[1], transformedCloud->sensor_origin_[2] );
 		hull_limiter.segment( *object_indices );
 
 		std::cout << object_indices->indices.size() << "\n";
 
-		// add keyframe to map
-		graphmap->setApplyUpdate( false );
-		graphmap->markUpdateImprovedEffViewDistSurfels( transformedCloud->sensor_origin_.block< 3, 1 >( 0, 0 ) );
-		std::vector< int > imageBorderIndices;
-		graphmap->findVirtualBorderPoints( *( keyFrameNodeMap_[ v_id ]->cloud_ ), imageBorderIndices );
-		graphmap->markNoUpdateAtPoints( *transformedCloud, imageBorderIndices );
-		graphmap->unevaluateSurfels();
-		graphmap->addPoints( *transformedCloud, object_indices->indices );
-		graphmap->clearUpdateSurfelsAtPoints( *transformedCloud, imageBorderIndices ); // only new surfels at these points have up_to_date == false !
-		graphmap->octree_->root_->establishNeighbors();
-		graphmap->clearUnstableSurfels();
-		graphmap->setApplyUpdate( true );
-		graphmap->evaluateSurfels();
-		graphmap->buildShapeTextureFeatures();
+
+////		// add keyframe to map
+////		graphmap->setApplyUpdate( false );
+////		graphmap->markUpdateImprovedEffViewDistSurfels( transformedCloud->sensor_origin_.block<3,1>(0,0) );
+//		std::vector< int > imageBorderIndices;
+//		graphmap->findVirtualBorderPoints( *(keyFrameNodeMap_[v_id]->cloud_), imageBorderIndices );
+//		graphmap->markNoUpdateAtPoints( *transformedCloud, imageBorderIndices );
+////		graphmap->unevaluateSurfels();
+//
+//		std::vector< int > contourIndices;
+//		graphmap->findForegroundBorderPoints( *(keyFrameNodeMap_[v_id]->cloud_), contourIndices );
+//
+//		std::cout << "contour points: " << contourIndices.size() << "\n";
+//
+//		pcl::PointIndices::Ptr object_contour_indices( new pcl::PointIndices() );
+//		for( unsigned int i = 0; i < object_indices->indices.size(); i++ ) {
+//			if( std::find( contourIndices.begin(), contourIndices.end(), object_indices->indices[i] ) != contourIndices.end() ) {
+//				object_contour_indices->indices.push_back( object_indices->indices[i] );
+//			}
+//		}
+//
+//		std::cout << "adding " << object_contour_indices->indices.size() << "\n";
+//
+//		graphmap->addPoints( *transformedCloud, object_contour_indices->indices );
+////		graphmap->clearUpdateSurfelsAtPoints( *transformedCloud, imageBorderIndices ); // only new surfels at these points have up_to_date == false !
+//		graphmap->octree_->root_->establishNeighbors();
+////		graphmap->clearUnstableSurfels();
+////		graphmap->setApplyUpdate( true );
+////		graphmap->buildShapeTextureFeatures();
+
+
+        // add keyframe to map
+        graphmap->setApplyUpdate( false );
+        graphmap->markUpdateImprovedEffViewDistSurfels( transformedCloud->sensor_origin_.block< 3, 1 >( 0, 0 ) );
+        std::vector< int > imageBorderIndices;
+        graphmap->findVirtualBorderPoints( *( keyFrameNodeMap_[ v_id ]->cloud_ ), imageBorderIndices );
+        graphmap->markNoUpdateAtPoints( *transformedCloud, imageBorderIndices );
+        graphmap->unevaluateSurfels();
+        graphmap->addPoints( *transformedCloud, object_indices->indices );
+        graphmap->clearUpdateSurfelsAtPoints( *transformedCloud, imageBorderIndices ); // only new surfels at these points have up_to_date == false !
+        graphmap->octree_->root_->establishNeighbors();
+        graphmap->clearUnstableSurfels();
+        graphmap->setApplyUpdate( true );
+        graphmap->evaluateSurfels();
+        graphmap->buildShapeTextureFeatures();
+
+
 
 	}
 
 	return graphmap;
 
 }
+
+
 

@@ -38,26 +38,115 @@
 #ifndef UTILITIES_H_
 #define UTILITIES_H_
 
-#include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <opencv2/opencv.hpp>
 
 #include <string>
+#include <set>
+
+#include <Eigen/Core>
+
 
 namespace mrsmap {
 
-bool pointInImage( const Eigen::Vector4f& p );
+	const int UNASSIGNED_LABEL = -1;
+	const int OUTLIER_LABEL = -2;
 
-void imagesToPointCloud( const cv::Mat& depthImg, const cv::Mat& colorImg, const std::string& timeStamp, pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud, unsigned int downsampling = 1 );
+	namespace colormapjet {
+		double interpolate( double val, double y0, double x0, double y1, double x1 );
+		double base( double val );
+		double red( double gray );
+		double green( double gray );
+		double blue( double gray );
+	}
 
-void pointCloudToImage( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& cloud, cv::Mat& img );
+	cv::Mat visualizeDepth( const cv::Mat& depthImg, float minDepth, float maxDepth );
 
-void pointCloudsToOverlayImage( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& rgb_cloud, const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& overlay_cloud, cv::Mat& img );
+	bool pointInImage( const Eigen::Vector4f& p );
+	bool pointInImage( const Eigen::Vector4f& p, const unsigned int imageBorder );
+	Eigen::Vector2f pointImagePos( const Eigen::Vector4f& p );
 
-void getCameraCalibration( cv::Mat& cameraMatrix, cv::Mat& distortionCoeffs );
+	void convertRGB2LAlphaBeta( float r, float g, float b, float& L, float& alpha, float& beta );
+	void convertLAlphaBeta2RGB( float L, float alpha, float beta, float& r, float& g, float& b );
+	void convertLAlphaBeta2RGBDamped( float L, float alpha, float beta, float& r, float& g, float& b );
 
-}
+	cv::Mat visualizeAlphaBetaPlane( float L, unsigned int imgSize );
+
+	void imagesToPointCloud( const cv::Mat& depthImg, const cv::Mat& colorImg, const std::string& timeStamp, pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud, unsigned int downsampling = 1 );
+	void imagesToPointCloudUnorganized( const cv::Mat& depthImg, const cv::Mat& colorImg, const std::string& timeStamp, pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloud, unsigned int downsampling = 1 );
+
+	void pointCloudToImage( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& cloud, cv::Mat& img );
+	void pointCloudToImages( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& cloud, cv::Mat& img_rgb, cv::Mat& img_depth );
+
+	void pointCloudsToOverlayImage( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& rgb_cloud, const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& overlay_cloud, cv::Mat& img );
+
+	void downsamplePointCloud( const pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloudIn, pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloudOut, unsigned int downsampling );
+	void downsamplePointCloud( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& cloudIn, pcl::PointCloud< pcl::PointXYZRGB >::Ptr& cloudOut, unsigned int downsampling );
+
+	double averageDepth( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& cloud );
+	double medianDepth( const pcl::PointCloud< pcl::PointXYZRGB >::ConstPtr& cloud );
+
+	void getCameraCalibration( cv::Mat& cameraMatrix, cv::Mat& distortionCoeffs );
+
+	class SegmentationResult {
+	public:
+		SegmentationResult() {}
+		~SegmentationResult() {}
+//
+		static void printConfusionMatrix( const std::map< unsigned int, std::map< int, unsigned int > >& confusionMatrix );
+
+		// -1: unassigned label in result
+		// -2: outlier label in result
+//		std::map< unsigned int, std::map< int, unsigned int > > confusionMatrix;
+		std::map< unsigned int, unsigned int > gtToResultColorMap;
+		std::map< unsigned int, bool > objectInMotionGroup;
+
+		double overallTPs, overallTPFPFNs;
+		std::map< unsigned int, double > objectTPs, objectTPFPs, objectTPFNs, objectTPFPFNs;
+	};
+
+	void fuseSegmentationForMotionGroups( cv::Mat& img, const std::vector< std::vector< unsigned int > >& motionGroups );
+
+	SegmentationResult compareToGroundTruth( cv::Mat& img_moseg, cv::Mat& img_gt, const std::vector< std::vector< unsigned int > >& motionGroups );
+
+	unsigned int countPixels( cv::Mat& img, unsigned int color );
+
+//	// combines labels according to motion groups
+//	void applyMotionGroupsOnConfusionMatrix( SegmentationResult& result, const std::vector< std::vector< unsigned int > >& motionGroups );
+
+//	double averagePixelAccuracy( const SegmentationResult& result, bool countOutliers );
+//	double averageObjectAccuracy( const SegmentationResult& result, bool countOutliers );
+//	double objectAccuracy( unsigned int objectId, const SegmentationResult& result, bool countOutliers );
+//
+//	std::pair< double, double > allObjectsAccuracyStats( const SegmentationResult& result, bool countOutliers );
+//	std::pair< double, double > objectAccuracyStats( unsigned int objectId, const SegmentationResult& result, bool countOutliers );
+
+	std::set< unsigned int > getObjectIds( cv::Mat& img_gt );
+
+	void replaceObjectColor( cv::Mat& img_gt, unsigned int id_from, unsigned int id_to );
+
+	unsigned int objectIdFromColori( unsigned int color );
+	unsigned int objectIdFromColorf( float color );
+
+	unsigned int colorForObjectId( unsigned int objectId );
+
+
+	void colorForObjectClass( int c, float& r, float& g, float& b );
+
+
+
+	void fillDepthFromRight( cv::Mat& imgDepth );
+	void fillDepthFromLeft( cv::Mat& imgDepth );
+	void fillDepthFromTop( cv::Mat& imgDepth );
+	void fillDepthFromBottom( cv::Mat& imgDepth );
+
+
+};
+
 
 
 #endif /* UTILITIES_H_ */
+
+
 

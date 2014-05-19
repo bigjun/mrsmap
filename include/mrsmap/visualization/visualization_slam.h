@@ -47,23 +47,23 @@
 
 namespace mrsmap {
 
-class SLAM;
+	class SLAM;
 
-class ViewerSLAM: public Viewer {
-public:
-	ViewerSLAM( SLAM* slam )
-			: Viewer(), slam_( slam ) {
-	}
-	virtual ~ViewerSLAM() {
-	}
+	class ViewerSLAM : public Viewer {
+	public:
+		ViewerSLAM( SLAM* slam ) : Viewer(), slam_(slam) {}
+		virtual ~ViewerSLAM() {}
 
-	void visualizeSLAMGraph();
+		void visualizeSLAMGraph();
 
-	SLAM* slam_;
+		SLAM* slam_;
 
-};
+	};
 
 }
 
+
+
 #endif /* VISUALIZATION_SLAM_H_ */
+
 
