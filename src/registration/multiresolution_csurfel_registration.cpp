@@ -52,7 +52,7 @@ using namespace mrsmap;
 typedef MultiResolutionColorSurfelRegistration MRCSReg;
 typedef MRCSReg::SurfelAssociationList MRCSRSAL;
 typedef MRCSReg::FeatureAssociationList MRCSRFAL;
-typedef MultiResolutionColorSurfelMap MRCSMap;
+typedef MultiResolutionColorSurfelMap<NodeValue> MRCSMap;
 
 
 // TODO: falcopy vermeiden, prüfen, wieviele iterationen in coarse verbracht werden..
@@ -152,7 +152,7 @@ void MultiResolutionColorSurfelRegistration::setPriorPose( bool enabled, const E
 }
 
 
-bool pointOccluded( const Eigen::Vector4f& p, const MultiResolutionColorSurfelMap& target, double z_similarity_factor ) {
+bool pointOccluded( const Eigen::Vector4f& p, const MultiResolutionColorSurfelMap<NodeValue>& target, double z_similarity_factor ) {
 
 	if( isnan( p(0) ) )
 		return false;
@@ -168,7 +168,7 @@ bool pointOccluded( const Eigen::Vector4f& p, const MultiResolutionColorSurfelMa
 	if( !target.imageAllocator_->node_set_.empty() ) {
 
 		unsigned int idx = py * 640 + px;
-		const spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = target.imageAllocator_->node_image_[idx];
+		const spatialaggregate::OcTreeNode< float, NodeValue >* n = target.imageAllocator_->node_image_[idx];
 		if( n ) {
 			double z_dist = std::max( 0.f, p(2) - n->getCenterPosition()(2) );
 			if( z_dist > fabsf( z_similarity_factor * p(2) ) )
@@ -188,7 +188,7 @@ bool pointOccluded( const Eigen::Vector4f& p, const MultiResolutionColorSurfelMa
 }
 
 
-spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* MultiResolutionColorSurfelRegistration::calculateNegLogLikelihoodFeatureScoreN( double& logLikelihood, double& featureScore, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node, const MultiResolutionColorSurfelMap& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate ) {
+spatialaggregate::OcTreeNode< float, NodeValue >* MultiResolutionColorSurfelRegistration::calculateNegLogLikelihoodFeatureScoreN( double& logLikelihood, double& featureScore, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, NodeValue >* node, const MultiResolutionColorSurfelMap<NodeValue>& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate ) {
 
 	// for each surfel in node with applyUpdate set and sufficient points, transform to target using transform,
 	// then measure negative log likelihood
@@ -215,7 +215,7 @@ spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*
 //	if( occluded )
 //		return NULL;
 
-	std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* > neighbors;
+	std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* > neighbors;
 	neighbors.reserve(50);
 	float searchRange = 2.f;
 	Eigen::Vector4f minPosition = npos_match_src - Eigen::Vector4f( searchRange*node->resolution(), searchRange*node->resolution(), searchRange*node->resolution(), 0.f );
@@ -227,16 +227,16 @@ spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*
 		return NULL;
 	}
 
-	spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_matched = NULL;
-	MultiResolutionColorSurfelMap::Surfel* srcSurfel = NULL;
-	MultiResolutionColorSurfelMap::Surfel* matchedSurfel = NULL;
+	spatialaggregate::OcTreeNode< float, NodeValue >* n_matched = NULL;
+	MultiResolutionColorSurfelMap<NodeValue>::Surfel* srcSurfel = NULL;
+	MultiResolutionColorSurfelMap<NodeValue>::Surfel* matchedSurfel = NULL;
 	int matchedSurfelIdx = -1;
 	double bestDist = std::numeric_limits<double>::max();
 
 	// get closest node in neighbor list
-	for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
+	for( unsigned int i = 0; i < node->value_.numberOfSurfels; i++ ) {
 
-		MultiResolutionColorSurfelMap::Surfel& surfel = node->value_.surfels_[i];
+		MultiResolutionColorSurfelMap<NodeValue>::Surfel& surfel = node->value_.surfels_[i];
 
 		// border points are returned but must be handled later!
 		if( surfel.num_points_ < MIN_SURFEL_POINTS ) {
@@ -253,17 +253,17 @@ spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*
 		Eigen::Vector4d pos_match_src = transform * pos;
 		Eigen::Vector3d dir_match_src = rotation * surfel.initial_view_dir_;
 
-		for( std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >::iterator it = neighbors.begin(); it != neighbors.end(); it++ ) {
+		for( std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >::iterator it = neighbors.begin(); it != neighbors.end(); it++ ) {
 
 			if( (*it)->value_.border_ != node->value_.border_ )
 				continue;
 
-			MultiResolutionColorSurfelMap::Surfel* bestMatchSurfel = NULL;
+			MultiResolutionColorSurfelMap<NodeValue>::Surfel* bestMatchSurfel = NULL;
 			int bestMatchSurfelIdx = -1;
 			double bestMatchDist = -1.f;
-			for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
+			for( unsigned int k = 0; k < (*it)->value_.numberOfSurfels; k++ ) {
 
-				const MultiResolutionColorSurfelMap::Surfel& srcSurfel2 = (*it)->value_.surfels_[k];
+				const MultiResolutionColorSurfelMap<NodeValue>::Surfel& srcSurfel2 = (*it)->value_.surfels_[k];
 
 				if( srcSurfel2.num_points_ < MIN_SURFEL_POINTS ) {
 					continue;
@@ -345,12 +345,12 @@ spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*
 
 			for( int s = 0; s < 27; s++ ) {
 
-				spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_dst_n = n_matched->neighbors_[s];
+				spatialaggregate::OcTreeNode< float, NodeValue >* n_dst_n = n_matched->neighbors_[s];
 
 				if(!n_dst_n)
 					continue;
 
-				MultiResolutionColorSurfelMap::Surfel* dst_n = &n_dst_n->value_.surfels_[matchedSurfelIdx];
+				MultiResolutionColorSurfelMap<NodeValue>::Surfel* dst_n = &n_dst_n->value_.surfels_[matchedSurfelIdx];
 				if( dst_n->num_points_ < MIN_SURFEL_POINTS )
 					continue;
 
@@ -486,12 +486,12 @@ spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*
 
 			for( int s = 0; s < 27; s++ ) {
 
-				spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_dst_n = n_matched->neighbors_[s];
+				spatialaggregate::OcTreeNode< float, NodeValue >* n_dst_n = n_matched->neighbors_[s];
 
 				if(!n_dst_n)
 					continue;
 
-				MultiResolutionColorSurfelMap::Surfel* dst_n = &n_dst_n->value_.surfels_[matchedSurfelIdx];
+				MultiResolutionColorSurfelMap<NodeValue>::Surfel* dst_n = &n_dst_n->value_.surfels_[matchedSurfelIdx];
 				if( dst_n->num_points_ < MIN_SURFEL_POINTS )
 					continue;
 
@@ -583,7 +583,7 @@ spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*
 }
 
 
-spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* MultiResolutionColorSurfelRegistration::calculateNegLogLikelihoodN( double& logLikelihood, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node, const MultiResolutionColorSurfelMap& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate ) {
+spatialaggregate::OcTreeNode< float, NodeValue >* MultiResolutionColorSurfelRegistration::calculateNegLogLikelihoodN( double& logLikelihood, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, NodeValue >* node, const MultiResolutionColorSurfelMap<NodeValue>& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate ) {
 
 	double featureScore = 0.0;
 
@@ -592,7 +592,7 @@ spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*
 }
 
 
-bool MultiResolutionColorSurfelRegistration::calculateNegLogLikelihood( double& logLikelihood, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node, const MultiResolutionColorSurfelMap& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate ) {
+bool MultiResolutionColorSurfelRegistration::calculateNegLogLikelihood( double& logLikelihood, spatialaggregate::OcTreeNode< float, NodeValue >* node, const MultiResolutionColorSurfelMap<NodeValue>& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate ) {
 
 	bool outOfImage = false;
 	bool virtualBorder = false;
@@ -606,10 +606,10 @@ bool MultiResolutionColorSurfelRegistration::calculateNegLogLikelihood( double& 
 
 
 // transform from src to tgt
-double MultiResolutionColorSurfelRegistration::calculateInPlaneLogLikelihood( spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_tgt, const Eigen::Matrix4d& transform, double normal_z_cov ) {
+double MultiResolutionColorSurfelRegistration::calculateInPlaneLogLikelihood( spatialaggregate::OcTreeNode< float, NodeValue >* n_src, spatialaggregate::OcTreeNode< float, NodeValue >* n_tgt, const Eigen::Matrix4d& transform, double normal_z_cov ) {
 
 	double bestLogLikelihood = 18.0;
-	for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
+	for( unsigned int i = 0; i < n_src->value_.numberOfSurfels; i++ ) {
 
 		ColorSurfel& s_src = n_src->value_.surfels_[i];
 		ColorSurfel& s_tgt = n_tgt->value_.surfels_[i];
@@ -664,7 +664,7 @@ double MultiResolutionColorSurfelRegistration::calculateInPlaneLogLikelihood( sp
 }
 
 
-void MultiResolutionColorSurfelRegistration::associateMapsBreadthFirstParallel( MultiResolutionColorSurfelRegistration::SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, algorithm::OcTreeSamplingVectorMap< float, MultiResolutionColorSurfelMap::NodeValue >& targetSamplingMap, Eigen::Matrix4d& transform, double minResolution, double maxResolution, double searchDistFactor, double maxSearchDist, bool useFeatures ) {
+void MultiResolutionColorSurfelRegistration::associateMapsBreadthFirstParallel( MultiResolutionColorSurfelRegistration::SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, algorithm::OcTreeSamplingVectorMap< float, NodeValue >& targetSamplingMap, Eigen::Matrix4d& transform, double minResolution, double maxResolution, double searchDistFactor, double maxSearchDist, bool useFeatures ) {
 
 
 	target.distributeAssociatedFlag();
@@ -710,7 +710,7 @@ void MultiResolutionColorSurfelRegistration::associateMapsBreadthFirstParallel( 
 
 class AssociateFunctor {
 public:
-	AssociateFunctor( tbb::concurrent_vector< MultiResolutionColorSurfelRegistration::SurfelAssociation >* associations, const MultiResolutionColorSurfelRegistration::Params& params, MultiResolutionColorSurfelMap* source, MultiResolutionColorSurfelMap* target, std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >* nodes, const Eigen::Matrix4d& transform, int processDepth, double searchDistFactor, double maxSearchDist, bool useFeatures ) {
+	AssociateFunctor( tbb::concurrent_vector< MultiResolutionColorSurfelRegistration::SurfelAssociation >* associations, const MultiResolutionColorSurfelRegistration::Params& params, MultiResolutionColorSurfelMap<NodeValue>* source, MultiResolutionColorSurfelMap<NodeValue>* target, std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >* nodes, const Eigen::Matrix4d& transform, int processDepth, double searchDistFactor, double maxSearchDist, bool useFeatures ) {
 		associations_ = associations;
 		params_ = params;
 		source_ = source;
@@ -743,9 +743,9 @@ public:
 	}
 
 
-	void operator()( spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >*& node ) const {
+	void operator()( spatialaggregate::OcTreeNode< float, NodeValue >*& node ) const {
 
-		spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = node;
+		spatialaggregate::OcTreeNode< float, NodeValue >* n = node;
 
 		if( n->value_.associated_ == -1 )
 			return;
@@ -791,7 +791,7 @@ public:
 		// check compatibility using inverse depth parametrization
 
 		// check if a surfels exist
-		for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
+		for( unsigned int i = 0; i < n->value_.numberOfSurfels; i++ ) {
 
 			// if image border points fall into this node, we must check the children_
 			if( !n->value_.surfels_[i].applyUpdate_ ) {
@@ -807,8 +807,8 @@ public:
 
 		if( hasSurfel ) {
 
-			spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src_last = NULL;
-			std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* > neighbors;
+			spatialaggregate::OcTreeNode< float, NodeValue >* n_src_last = NULL;
+			std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* > neighbors;
 
 			// association of this node exists from a previous iteration?
 			char surfelSrcIdx = -1;
@@ -870,7 +870,7 @@ public:
 
 			if( surfelSrcIdx >= 0 && surfelDstIdx >= 0 ) {
 
-				const MultiResolutionColorSurfelMap::Surfel& surfel = n->value_.surfels_[surfelSrcIdx];
+				const MultiResolutionColorSurfelMap<NodeValue>::Surfel& surfel = n->value_.surfels_[surfelSrcIdx];
 
 				if( surfel.num_points_ >= MIN_SURFEL_POINTS ) {
 
@@ -882,9 +882,9 @@ public:
 					Eigen::Vector3d dir_match_src = rotation_ * surfel.initial_view_dir_;
 
 					// iterate through neighbors of the directly associated node to eventually find a better match
-					for( std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >::iterator nit = neighbors.begin(); nit != neighbors.end(); ++nit ) {
+					for( std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >::iterator nit = neighbors.begin(); nit != neighbors.end(); ++nit ) {
 
-						spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src = *nit;
+						spatialaggregate::OcTreeNode< float, NodeValue >* n_src = *nit;
 
 						if( !n_src )
 							continue;
@@ -895,14 +895,14 @@ public:
 
 						// find matching surfel for the view direction, but allow to use a slightly worse fit,
 						// when it is the only one with sufficient points for matching
-						MultiResolutionColorSurfelMap::Surfel& dstSurfel = n_src->value_.surfels_[surfelDstIdx];
+						MultiResolutionColorSurfelMap<NodeValue>::Surfel& dstSurfel = n_src->value_.surfels_[surfelDstIdx];
 
 						if( dstSurfel.num_points_ < MIN_SURFEL_POINTS )
 							continue;
 
 						const double dist = dir_match_src.dot( dstSurfel.initial_view_dir_ );
 
-						MultiResolutionColorSurfelMap::Surfel* bestMatchSurfel = NULL;
+						MultiResolutionColorSurfelMap<NodeValue>::Surfel* bestMatchSurfel = NULL;
 						int bestMatchSurfelIdx = -1;
 						double bestMatchDist = -1.f;
 
@@ -979,9 +979,9 @@ public:
 			else {
 
 
-				for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
+				for( unsigned int i = 0; i < n->value_.numberOfSurfels; i++ ) {
 
-					const MultiResolutionColorSurfelMap::Surfel& surfel = n->value_.surfels_[i];
+					const MultiResolutionColorSurfelMap<NodeValue>::Surfel& surfel = n->value_.surfels_[i];
 
 					if( surfel.num_points_ < MIN_SURFEL_POINTS ) {
 						continue;
@@ -998,9 +998,9 @@ public:
 					Eigen::Vector3d dir_match_src = rotation_ * surfel.initial_view_dir_;
 
 					// iterate through neighbors of the directly associated node to eventually find a better match
-					for( std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >::iterator nit = neighbors.begin(); nit != neighbors.end(); ++nit ) {
+					for( std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >::iterator nit = neighbors.begin(); nit != neighbors.end(); ++nit ) {
 
-						spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src = *nit;
+						spatialaggregate::OcTreeNode< float, NodeValue >* n_src = *nit;
 
 						if( !n_src )
 							continue;
@@ -1010,12 +1010,12 @@ public:
 
 						// find matching surfel for the view direction, but allow to use a slightly worse fit,
 						// when it is the only one with sufficient points for matching
-						MultiResolutionColorSurfelMap::Surfel* bestMatchSurfel = NULL;
+						MultiResolutionColorSurfelMap<NodeValue>::Surfel* bestMatchSurfel = NULL;
 						int bestMatchSurfelIdx = -1;
 						double bestMatchDist = -1.f;
-						for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
+						for( unsigned int k = 0; k < n_src->value_.numberOfSurfels; k++ ) {
 
-							const MultiResolutionColorSurfelMap::Surfel& srcSurfel = n_src->value_.surfels_[k];
+							const MultiResolutionColorSurfelMap<NodeValue>::Surfel& srcSurfel = n_src->value_.surfels_[k];
 
 							if( srcSurfel.num_points_ < MIN_SURFEL_POINTS )
 								continue;
@@ -1111,9 +1111,9 @@ public:
 
 	tbb::concurrent_vector< MultiResolutionColorSurfelRegistration::SurfelAssociation >* associations_;
 	MultiResolutionColorSurfelRegistration::Params params_;
-	MultiResolutionColorSurfelMap* source_;
-	MultiResolutionColorSurfelMap* target_;
-	std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >* nodes_;
+	MultiResolutionColorSurfelMap<NodeValue>* source_;
+	MultiResolutionColorSurfelMap<NodeValue>* target_;
+	std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >* nodes_;
 	Eigen::Matrix4d transform_;
 	Eigen::Matrix4f transformf_;
 	Eigen::Matrix3d rotation_;
@@ -1128,18 +1128,18 @@ public:
 };
 
 
-void MultiResolutionColorSurfelRegistration::associateNodeListParallel( MultiResolutionColorSurfelRegistration::SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >& nodes, int processDepth, Eigen::Matrix4d& transform, double searchDistFactor, double maxSearchDist, bool useFeatures ) {
+void MultiResolutionColorSurfelRegistration::associateNodeListParallel( MultiResolutionColorSurfelRegistration::SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >& nodes, int processDepth, Eigen::Matrix4d& transform, double searchDistFactor, double maxSearchDist, bool useFeatures ) {
 
 	tbb::concurrent_vector< MultiResolutionColorSurfelRegistration::SurfelAssociation > depthAssociations;
 	depthAssociations.reserve( nodes.size() );
 
 	// only process nodes that are active (should improve parallel processing)
-	std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* > activeNodes;
+	std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* > activeNodes;
 	activeNodes.reserve( nodes.size() );
 
 	for( unsigned int i = 0; i < nodes.size(); i++ ) {
 
-		spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = nodes[i];
+		spatialaggregate::OcTreeNode< float, NodeValue >* n = nodes[i];
 
 		if( n->value_.associated_ == -1 )
 			continue;
@@ -1714,12 +1714,12 @@ public:
 
 				for( int s = 0; s < 27; s++ ) {
 
-					spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_dst_n = assoc.n_dst_->neighbors_[s];
+					spatialaggregate::OcTreeNode< float, NodeValue >* n_dst_n = assoc.n_dst_->neighbors_[s];
 
 					if(!n_dst_n)
 						continue;
 
-					MultiResolutionColorSurfelMap::Surfel* dst_n = &n_dst_n->value_.surfels_[assoc.dst_idx_];
+					MultiResolutionColorSurfelMap<NodeValue>::Surfel* dst_n = &n_dst_n->value_.surfels_[assoc.dst_idx_];
 					if( dst_n->num_points_ < MIN_SURFEL_POINTS )
 						continue;
 
@@ -2421,12 +2421,12 @@ public:
 
 				for( int s = 0; s < 27; s++ ) {
 
-					spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_dst_n = assoc.n_dst_->neighbors_[s];
+					spatialaggregate::OcTreeNode< float, NodeValue >* n_dst_n = assoc.n_dst_->neighbors_[s];
 
 					if(!n_dst_n)
 						continue;
 
-					MultiResolutionColorSurfelMap::Surfel* dst_n = &n_dst_n->value_.surfels_[assoc.dst_idx_];
+					MultiResolutionColorSurfelMap<NodeValue>::Surfel* dst_n = &n_dst_n->value_.surfels_[assoc.dst_idx_];
 					if( dst_n->num_points_ < MIN_SURFEL_POINTS )
 						continue;
 
@@ -2693,8 +2693,8 @@ public:
 		return dPI_da * da_dm;
 	}
 
-	GradientFunctorPointFeature(MultiResolutionColorSurfelMap* source,
-			MultiResolutionColorSurfelMap* target,
+	GradientFunctorPointFeature(MultiResolutionColorSurfelMap<NodeValue>* source,
+			MultiResolutionColorSurfelMap<NodeValue>* target,
 			MultiResolutionColorSurfelRegistration::FeatureAssociationList* assocList,
 			const MultiResolutionColorSurfelRegistration::Params& params,
 			MultiResolutionColorSurfelRegistration* reg, double tx,
@@ -2806,8 +2806,8 @@ public:
 	MultiResolutionColorSurfelRegistration::FeatureAssociationList* assocList_;
 	MultiResolutionColorSurfelRegistration::Params params_;
 
-	MultiResolutionColorSurfelMap* source_;
-	MultiResolutionColorSurfelMap* target_;
+	MultiResolutionColorSurfelMap<NodeValue>* source_;
+	MultiResolutionColorSurfelMap<NodeValue>* target_;
 
 	MultiResolutionColorSurfelRegistration* reg_;
 
@@ -4180,7 +4180,7 @@ bool MultiResolutionColorSurfelRegistration::estimateTransformationLevenbergMarq
 
 
 
-bool MultiResolutionColorSurfelRegistration::estimateTransformation( MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesSourcePoints, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesTargetPoints, int gradientIterations, int coarseToFineIterations, int fineIterations ) {
+bool MultiResolutionColorSurfelRegistration::estimateTransformation( MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesSourcePoints, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesTargetPoints, int gradientIterations, int coarseToFineIterations, int fineIterations ) {
 
 	params_.startResolution_ = startResolution;
 	params_.stopResolution_ = stopResolution;
@@ -4248,7 +4248,7 @@ bool MultiResolutionColorSurfelRegistration::estimateTransformation( MultiResolu
 
 class MatchLogLikelihoodFunctor {
 public:
-	MatchLogLikelihoodFunctor( MultiResolutionColorSurfelRegistration::NodeLogLikelihoodList* nodes, MultiResolutionColorSurfelRegistration::Params params, MultiResolutionColorSurfelMap* source, MultiResolutionColorSurfelMap* target, const Eigen::Matrix4d& transform ) {
+	MatchLogLikelihoodFunctor( MultiResolutionColorSurfelRegistration::NodeLogLikelihoodList* nodes, MultiResolutionColorSurfelRegistration::Params params, MultiResolutionColorSurfelMap<NodeValue>* source, MultiResolutionColorSurfelMap<NodeValue>* target, const Eigen::Matrix4d& transform ) {
 		nodes_ = nodes;
 		params_ = params;
 		source_ = source;
@@ -4275,7 +4275,7 @@ public:
 
 	void operator()( MultiResolutionColorSurfelRegistration::NodeLogLikelihood& node ) const {
 
-		spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = node.n_;
+		spatialaggregate::OcTreeNode< float, NodeValue >* n = node.n_;
 
 		double sumLogLikelihood = 0.0;
 
@@ -4286,7 +4286,7 @@ public:
 		Eigen::Vector4d npos_match_src = targetToSourceTransform * npos;
 
 		// for match log likelihood: query in volume to check the neighborhood for the best matching (discretization issues)
-		std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* > nodes;
+		std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* > nodes;
 		nodes.reserve(50);
 		const double searchRadius = 2.0 * n->resolution();
 		Eigen::Vector4f minPosition, maxPosition;
@@ -4308,9 +4308,9 @@ public:
 
 		// only consider model surfels that are visible from the scene viewpoint under the given transformation
 
-		for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
+		for( unsigned int i = 0; i < n->value_.numberOfSurfels; i++ ) {
 
-			MultiResolutionColorSurfelMap::Surfel* modelSurfel = &n->value_.surfels_[i];
+			MultiResolutionColorSurfelMap<NodeValue>::Surfel* modelSurfel = &n->value_.surfels_[i];
 
 			if( modelSurfel->num_points_ < MIN_SURFEL_POINTS ) {
 				continue;
@@ -4357,14 +4357,14 @@ public:
 //				continue;
 //			}
 
-			for( std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >::iterator it = nodes.begin(); it != nodes.end(); ++it ) {
+			for( std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >::iterator it = nodes.begin(); it != nodes.end(); ++it ) {
 
-				spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src = *it;
+				spatialaggregate::OcTreeNode< float, NodeValue >* n_src = *it;
 
 				// find best matching surfel for the view direction in the scene map
-				MultiResolutionColorSurfelMap::Surfel* bestMatchSurfel = NULL;
+				MultiResolutionColorSurfelMap<NodeValue>::Surfel* bestMatchSurfel = NULL;
 				double bestMatchDist = -1.f;
-				for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
+				for( unsigned int k = 0; k < n_src->value_.numberOfSurfels; k++ ) {
 
 					const double dist = dir_match_src.block<3,1>(0,0).dot( n_src->value_.surfels_[k].initial_view_dir_ );
 					if( dist > bestMatchDist ) {
@@ -4459,8 +4459,8 @@ public:
 
 	MultiResolutionColorSurfelRegistration::NodeLogLikelihoodList* nodes_;
 	MultiResolutionColorSurfelRegistration::Params params_;
-	MultiResolutionColorSurfelMap* source_;
-	MultiResolutionColorSurfelMap* target_;
+	MultiResolutionColorSurfelMap<NodeValue>* source_;
+	MultiResolutionColorSurfelMap<NodeValue>* target_;
 	Eigen::Matrix4d transform_;
 
 	double normalStd;
@@ -4476,7 +4476,7 @@ public:
 
 // transform: transforms source to target
 // intended to have the "smaller" map (the model) in target
-double MultiResolutionColorSurfelRegistration::matchLogLikelihood( MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform ) {
+double MultiResolutionColorSurfelRegistration::matchLogLikelihood( MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform ) {
 
 	targetSamplingMap_ = algorithm::downsampleVectorOcTree(*target.octree_, false, target.octree_->max_depth_);
 
@@ -4525,10 +4525,10 @@ double MultiResolutionColorSurfelRegistration::matchLogLikelihood( MultiResoluti
 //
 //	// start at highest resolution in the tree and compare recursively
 //	MultiResolutionColorSurfelRegistration::SurfelAssociationList surfelAssociations;
-//	std::list< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* > openNodes;
+//	std::list< spatialaggregate::OcTreeNode< float, NodeValue >* > openNodes;
 //	openNodes.push_back( target.octree_->root_ );
 //	while( !openNodes.empty() ) {
-//		spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = openNodes.front();
+//		spatialaggregate::OcTreeNode< float, NodeValue >* n = openNodes.front();
 //		openNodes.pop_front();
 //
 //		for( unsigned int i = 0; i < 8; i++ ) {
@@ -4542,7 +4542,7 @@ double MultiResolutionColorSurfelRegistration::matchLogLikelihood( MultiResoluti
 //		Eigen::Vector4d npos_match_src = targetToSourceTransform * npos;
 //
 //		// for match log likelihood: query in volume to check the neighborhood for the best matching (discretization issues)
-//		std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* > nodes;
+//		std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* > nodes;
 //		nodes.reserve(50);
 //		const double searchRadius = 2.0 * n->resolution();
 //		Eigen::Vector4f minPosition, maxPosition;
@@ -4564,9 +4564,9 @@ double MultiResolutionColorSurfelRegistration::matchLogLikelihood( MultiResoluti
 //
 //		// only consider model surfels that are visible from the scene viewpoint under the given transformation
 //
-//		for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
+//		for( unsigned int i = 0; i < n->value_.numberOfSurfels; i++ ) {
 //
-//			MultiResolutionColorSurfelMap::Surfel* modelSurfel = &n->value_.surfels_[i];
+//			MultiResolutionColorSurfelMap<NodeValue>::Surfel* modelSurfel = &n->value_.surfels_[i];
 //
 //			if( modelSurfel->num_points_ < MIN_SURFEL_POINTS ) {
 //				continue;
@@ -4613,14 +4613,14 @@ double MultiResolutionColorSurfelRegistration::matchLogLikelihood( MultiResoluti
 //				continue;
 //			}
 //
-//			for( std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >::iterator it = nodes.begin(); it != nodes.end(); ++it ) {
+//			for( std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >::iterator it = nodes.begin(); it != nodes.end(); ++it ) {
 //
-//				spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src = *it;
+//				spatialaggregate::OcTreeNode< float, NodeValue >* n_src = *it;
 //
 //				// find best matching surfel for the view direction in the scene map
-//				MultiResolutionColorSurfelMap::Surfel* bestMatchSurfel = NULL;
+//				MultiResolutionColorSurfelMap<NodeValue>::Surfel* bestMatchSurfel = NULL;
 //				double bestMatchDist = -1.f;
-//				for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
+//				for( unsigned int k = 0; k < n_src->value_.numberOfSurfels; k++ ) {
 //
 //					const double dist = dir_match_src.block<3,1>(0,0).dot( n_src->value_.surfels_[k].initial_view_dir_ );
 //					if( dist > bestMatchDist ) {
@@ -4719,7 +4719,7 @@ double MultiResolutionColorSurfelRegistration::matchLogLikelihood( MultiResoluti
 
 class SelfMatchLogLikelihoodFunctor {
 public:
-	SelfMatchLogLikelihoodFunctor( MultiResolutionColorSurfelRegistration::NodeLogLikelihoodList* nodes, MultiResolutionColorSurfelRegistration::Params params, MultiResolutionColorSurfelMap* target ) {
+	SelfMatchLogLikelihoodFunctor( MultiResolutionColorSurfelRegistration::NodeLogLikelihoodList* nodes, MultiResolutionColorSurfelRegistration::Params params, MultiResolutionColorSurfelMap<NodeValue>* target ) {
 		nodes_ = nodes;
 		params_ = params;
 		target_ = target;
@@ -4739,7 +4739,7 @@ public:
 
 	void operator()( MultiResolutionColorSurfelRegistration::NodeLogLikelihood& node ) const {
 
-		spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = node.n_;
+		spatialaggregate::OcTreeNode< float, NodeValue >* n = node.n_;
 
 		double sumLogLikelihood = 0.0;
 
@@ -4755,9 +4755,9 @@ public:
 
 		// only consider model surfels that are visible from the scene viewpoint under the given transformation
 
-		for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
+		for( unsigned int i = 0; i < n->value_.numberOfSurfels; i++ ) {
 
-			MultiResolutionColorSurfelMap::Surfel* modelSurfel = &n->value_.surfels_[i];
+			MultiResolutionColorSurfelMap<NodeValue>::Surfel* modelSurfel = &n->value_.surfels_[i];
 
 			if( modelSurfel->num_points_ < MIN_SURFEL_POINTS ) {
 				continue;
@@ -4811,7 +4811,7 @@ public:
 
 	MultiResolutionColorSurfelRegistration::NodeLogLikelihoodList* nodes_;
 	MultiResolutionColorSurfelRegistration::Params params_;
-	MultiResolutionColorSurfelMap* target_;
+	MultiResolutionColorSurfelMap<NodeValue>* target_;
 
 	double normalStd;
 	double normalMinLogLikelihood;
@@ -4819,7 +4819,7 @@ public:
 };
 
 
-double MultiResolutionColorSurfelRegistration::selfMatchLogLikelihood( MultiResolutionColorSurfelMap& target ) {
+double MultiResolutionColorSurfelRegistration::selfMatchLogLikelihood( MultiResolutionColorSurfelMap<NodeValue>& target ) {
 
 	targetSamplingMap_ = algorithm::downsampleVectorOcTree(*target.octree_, false, target.octree_->max_depth_);
 
@@ -4858,14 +4858,14 @@ double MultiResolutionColorSurfelRegistration::selfMatchLogLikelihood( MultiReso
 }
 
 
-bool MultiResolutionColorSurfelRegistration::estimatePoseCovariance( Eigen::Matrix< double, 6, 6 >& poseCov, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution ) {
+bool MultiResolutionColorSurfelRegistration::estimatePoseCovariance( Eigen::Matrix< double, 6, 6 >& poseCov, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution ) {
 
 	target.clearAssociations();
 
 	float minResolution = std::min( startResolution, stopResolution );
 	float maxResolution = std::max( startResolution, stopResolution );
 
-	algorithm::OcTreeSamplingVectorMap<float, MultiResolutionColorSurfelMap::NodeValue> targetSamplingMap = algorithm::downsampleVectorOcTree(*target.octree_, false, target.octree_->max_depth_);
+	algorithm::OcTreeSamplingVectorMap<float, NodeValue> targetSamplingMap = algorithm::downsampleVectorOcTree(*target.octree_, false, target.octree_->max_depth_);
 
 	double sumWeight = 0.0;
 
@@ -4939,14 +4939,14 @@ bool MultiResolutionColorSurfelRegistration::estimatePoseCovariance( Eigen::Matr
 }
 
 
-bool MultiResolutionColorSurfelRegistration::estimatePoseCovarianceLM( Eigen::Matrix< double, 6, 6 >& poseCov, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution ) {
+bool MultiResolutionColorSurfelRegistration::estimatePoseCovarianceLM( Eigen::Matrix< double, 6, 6 >& poseCov, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution ) {
 
 	target.clearAssociations();
 
 	float minResolution = std::min( startResolution, stopResolution );
 	float maxResolution = std::max( startResolution, stopResolution );
 
-	algorithm::OcTreeSamplingVectorMap<float, MultiResolutionColorSurfelMap::NodeValue> targetSamplingMap = algorithm::downsampleVectorOcTree(*target.octree_, false, target.octree_->max_depth_);
+	algorithm::OcTreeSamplingVectorMap<float, NodeValue> targetSamplingMap = algorithm::downsampleVectorOcTree(*target.octree_, false, target.octree_->max_depth_);
 
 	double sumWeight = 0.0;
 
@@ -5050,13 +5050,13 @@ bool MultiResolutionColorSurfelRegistration::estimatePoseCovarianceLM( Eigen::Ma
 //
 //
 //
-//void MultiFrameMultiResolutionColorSurfelRegistration::addFramePair( MultiResolutionColorSurfelMap* source, MultiResolutionColorSurfelMap* target, const Eigen::Matrix4d& transformGuess ) {
+//void MultiFrameMultiResolutionColorSurfelRegistration::addFramePair( MultiResolutionColorSurfelMap<NodeValue>* source, MultiResolutionColorSurfelMap<NodeValue>* target, const Eigen::Matrix4d& transformGuess ) {
 //
 //	registration_pairs_.push_back( FramePair( source, target, transformGuess ) );
 //
 //}
 //
-//void MultiFrameMultiResolutionColorSurfelRegistration::addTargetPoseConstraint( MultiResolutionColorSurfelMap* target_from, MultiResolutionColorSurfelMap* target_to, const Eigen::Matrix4d& refFrameTransform, const Eigen::Matrix< double, 7, 1 >& prior_pose_mean, const Eigen::Matrix< double, 6, 1 >& prior_pose_variances ) {
+//void MultiFrameMultiResolutionColorSurfelRegistration::addTargetPoseConstraint( MultiResolutionColorSurfelMap<NodeValue>* target_from, MultiResolutionColorSurfelMap<NodeValue>* target_to, const Eigen::Matrix4d& refFrameTransform, const Eigen::Matrix< double, 7, 1 >& prior_pose_mean, const Eigen::Matrix< double, 6, 1 >& prior_pose_variances ) {
 //
 //	int id_from = 0, id_to = 0;
 //	for( unsigned int i = 0; i < registration_pairs_.size(); i++ ) {

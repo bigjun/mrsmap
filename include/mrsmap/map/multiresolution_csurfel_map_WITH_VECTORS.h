@@ -372,7 +372,12 @@ namespace mrsmap {
 			}
 
 			inline void initializeSurfels(){
+
 				numberOfSurfels = 6;
+
+				Surfel surfel;
+				for(int i = 0; i<numberOfSurfels; i++)
+					surfels_.push_back(surfel);
 
 				surfels_[0].initial_view_dir_ = Eigen::Vector3d( 1., 0., 0. );
 				surfels_[1].initial_view_dir_ = Eigen::Vector3d( -1., 0., 0. );
@@ -483,8 +488,8 @@ namespace mrsmap {
 				}
 			}
 
+			std::vector<Surfel> surfels_;
 			int numberOfSurfels;
-			Surfel surfels_[6];
 			char associated_; // -1: disabled, 0: not associated, 1: associated, 2: not associated but neighbor of associated node
 			spatialaggregate::OcTreeNode<float, NodeValue>* association_;
 			char assocSurfelIdx_, assocSurfelDstIdx_;

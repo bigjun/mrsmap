@@ -1,55 +1,3 @@
-/*
- * Software License Agreement (BSD License)
- *
- *  Copyright (c) 2011, Computer Science Institute VI, University of Bonn
- *  Author: Joerg Stueckler, 02.05.2011
- *  All rights reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted provided that the following conditions
- *  are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *   * Neither the name of University of Bonn, Computer Science Institute 
- *     VI nor the names of its contributors may be used to endorse or 
- *     promote products derived from this software without specific 
- *     prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
- *
- */
-
-#include "mrsmap/map/multiresolution_csurfel_map.h"
-
-#include <mrsmap/utilities/utilities.h>
-
-#include "octreelib/feature/normalestimation.h"
-#include "octreelib/algorithm/downsample.h"
-
-#include "gsl/gsl_rng.h"
-#include "gsl/gsl_randist.h"
-
-#include <ostream>
-#include <fstream>
-
-
-using namespace mrsmap;
 
 #define MAX_VIEWDIR_DIST cos( 0.25 * M_PI + 0.125*M_PI )
 
@@ -180,7 +128,7 @@ void MultiResolutionColorSurfelMap<T>::extents( Eigen::Matrix< double, 3, 1 >& m
 
 		  T& v = (*it)->value_;
 
-		  for( int i = 0; i < v.numberOfSurfels; i++ ) {
+		  for( int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 
 				Eigen::Vector3d mean_s = v.surfels_[i].mean_.template block<3,1>(0,0);
 				double num_points_s = v.surfels_[i].num_points_;
@@ -281,7 +229,7 @@ void MultiResolutionColorSurfelMap<T>::addPoints( const pcl::PointCloud< pcl::Po
 		T value;
 
 		// add surfel to view directions within an angular interval
-		for( unsigned int k = 0; k < value.numberOfSurfels; k++ ) {
+		for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
 			const double dist = viewDirection.dot( value.surfels_[k].initial_view_dir_ );
 			if( dist > max_dist ) {
 				value.surfels_[k] += surfel;
@@ -441,8 +389,7 @@ void MultiResolutionColorSurfelMap<T>::addImage( const pcl::PointCloud< pcl::Poi
 				// create new node value
 				*mapPtr = imageAllocator_->imageNodeAllocator_.allocate();
 				memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
-				//std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
-				for( unsigned int i = 0; i < (*mapPtr)->numberOfSurfels; i++ ) {
+				for( unsigned int i = 0; i < 6; i++ ) {
 					(*mapPtr)->surfels_[i].first_view_dir_ = viewDirection;
 					(*mapPtr)->surfels_[i].first_view_inv_dist_ = viewDistanceInv;
 				}
@@ -506,7 +453,7 @@ void MultiResolutionColorSurfelMap<T>::addImage( const pcl::PointCloud< pcl::Poi
 			}
 			else {
 				// add surfel to view directions within an angular interval
-				for( unsigned int k = 0; k < (*mapPtr)->numberOfSurfels; k++ ) {
+				for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
 					const double dist = viewDirection.dot( (*mapPtr)->surfels_[k].initial_view_dir_ );
 					if( dist > max_dist ) {
 //						(*mapPtr)->surfels_[k].add( pos, ppT, 1.0 );
@@ -712,8 +659,7 @@ void MultiResolutionColorSurfelMap<T>::addDisplacementImage( const pcl::PointClo
 				// create new node value
 				*mapPtr = imageAllocator_->imageNodeAllocator_.allocate();
 				memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
-				//std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
-				for( unsigned int i = 0; i < (*mapPtr)->numberOfSurfels; i++ ) {
+				for( unsigned int i = 0; i < 6; i++ ) {
 					(*mapPtr)->surfels_[i].first_view_dir_ = viewDirection;
 					(*mapPtr)->surfels_[i].first_view_inv_dist_ = viewDistanceInv;
 				}
@@ -750,7 +696,7 @@ void MultiResolutionColorSurfelMap<T>::addDisplacementImage( const pcl::PointClo
 			}
 			else {
 				// add surfel to view directions within an angular interval
-				for( unsigned int k = 0; k < (*mapPtr)->numberOfSurfels; k++ ) {
+				for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
 					const double dist = viewDirection.dot( (*mapPtr)->surfels_[k].initial_view_dir_ );
 					if( dist > max_dist ) {
 //						(*mapPtr)->surfels_[k].add( pos, ppT, 1.0 );
@@ -1034,8 +980,7 @@ void MultiResolutionColorSurfelMap<T>::ImageAddFunctor::operator()( const tbb::b
 				// create new node value
 				*mapPtr = imageAllocator_->imageNodeAllocator_.concurrent_allocate();
 				memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
-				//std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
-				for( unsigned int i = 0; i < (*mapPtr)->numberOfSurfels; i++ ) {
+				for( unsigned int i = 0; i < 6; i++ ) {
 					(*mapPtr)->surfels_[i].first_view_dir_ = viewDirection;
 					(*mapPtr)->surfels_[i].first_view_inv_dist_ = viewDistanceInv;
 				}
@@ -1099,7 +1044,7 @@ void MultiResolutionColorSurfelMap<T>::ImageAddFunctor::operator()( const tbb::b
 			}
 			else {
 				// add surfel to view directions within an angular interval
-				for( unsigned int k = 0; k < (*mapPtr)->numberOfSurfels; k++ ) {
+				for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
 					const double dist = viewDirection.dot( (*mapPtr)->surfels_[k].initial_view_dir_ );
 					if( dist > max_dist ) {
 //						(*mapPtr)->surfels_[k].add( pos, ppT, 1.0 );
@@ -2107,7 +2052,7 @@ void MultiResolutionColorSurfelMap<T>::clearAtPoints( const pcl::PointCloud< pcl
 		while ( n ) {
 
 
-			for( unsigned int k = 0; k < n->value_.numberOfSurfels; k++ ) {
+			for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
 				const double dist = viewDirection.dot( n->value_.surfels_[k].initial_view_dir_ );
 				if( dist > max_dist ) {
 					n->value_.surfels_[k].clear();
@@ -2165,7 +2110,7 @@ void MultiResolutionColorSurfelMap<T>::markNoUpdateAtPoints( const pcl::PointClo
 		spatialaggregate::OcTreeNode< float, T >* n = octree_->root_;
 		while ( n ) {
 
-			for( unsigned int k = 0; k < n->value_.numberOfSurfels; k++ ) {
+			for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
 				const double dist = viewDirection.dot( n->value_.surfels_[k].initial_view_dir_ );
 				if( dist > max_dist ) {
 					n->value_.surfels_[k].applyUpdate_ = false;
@@ -2247,7 +2192,7 @@ void markBorderFromViewpointFunction( spatialaggregate::OcTreeNode< float, T>* c
 
 //	current->value_.border_ = false;
 
-	for( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for( unsigned int i = 0; i < 6; i++ ) {
 
 		const ColorSurfel& surfel = current->value_.surfels_[i];
 
@@ -2333,7 +2278,7 @@ void MultiResolutionColorSurfelMap<T>::clearUpdateSurfelsAtPoints( const pcl::Po
 		spatialaggregate::OcTreeNode< float, T >* n = octree_->root_;
 		while ( n ) {
 
-			for( unsigned int k = 0; k < n->value_.numberOfSurfels; k++ ) {
+			for( unsigned int k = 0; k < MAX_NUM_SURFELS; k++ ) {
 				const double dist = viewDirection.dot( n->value_.surfels_[k].initial_view_dir_ );
 				if( dist > max_dist ) {
 					if( !n->value_.surfels_[k].up_to_date_ ) {
@@ -2361,7 +2306,7 @@ void MultiResolutionColorSurfelMap<T>::markUpdateAllSurfels() {
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::markUpdateAllSurfelsFunction( spatialaggregate::OcTreeNode< float, T >* current, spatialaggregate::OcTreeNode< float, T >* next, void* data ) {
 
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ )
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ )
 		current->value_.surfels_[i].applyUpdate_ = true;
 
 }
@@ -2380,7 +2325,7 @@ inline void MultiResolutionColorSurfelMap<T>::markUpdateImprovedEffViewDistSurfe
 
 	const Eigen::Vector3d& viewPos = *( (Eigen::Vector3d*) data );
 
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 
 		MultiResolutionColorSurfelMap<T>::Surfel& surfel = current->value_.surfels_[i];
 
@@ -2577,7 +2522,7 @@ void MultiResolutionColorSurfelMap<T>::buildShapeTextureFeatures() {
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::buildSimpleShapeTextureFeatureFunction( spatialaggregate::OcTreeNode<float, T>* current, spatialaggregate::OcTreeNode<float, T>* next, void* data ) {
 
-	for( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 
 		current->value_.surfels_[i].simple_shape_texture_features_.initialize();
 
@@ -2611,7 +2556,7 @@ inline void MultiResolutionColorSurfelMap<T>::buildAgglomeratedShapeTextureFeatu
 
 	const float neighborFactor = 0.1f;
 
-	for( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 
 		current->value_.surfels_[i].agglomerated_shape_texture_features_ = current->value_.surfels_[i].simple_shape_texture_features_;
 
@@ -2655,7 +2600,7 @@ void MultiResolutionColorSurfelMap<T>::clearAssociationDist() {
 
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::clearAssociationDistFunction(spatialaggregate::OcTreeNode<float, T>* current, spatialaggregate::OcTreeNode<float, T>* next, void* data) {
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		current->value_.surfels_[i].assocDist_ = std::numeric_limits<float>::max();
 	}
 }
@@ -2664,7 +2609,7 @@ inline void MultiResolutionColorSurfelMap<T>::clearAssociationDistFunction(spati
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::setApplyUpdateFunction( spatialaggregate::OcTreeNode< float, T >* current, spatialaggregate::OcTreeNode< float, T >* next, void* data ) {
 	bool v = *((bool*) data);
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		if( current->value_.surfels_[i].num_points_ >= MIN_SURFEL_POINTS ) {
 			current->value_.surfels_[i].applyUpdate_ = v;
 		}
@@ -2674,14 +2619,14 @@ inline void MultiResolutionColorSurfelMap<T>::setApplyUpdateFunction( spatialagg
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::setUpToDateFunction( spatialaggregate::OcTreeNode< float, T >* current, spatialaggregate::OcTreeNode< float, T >* next, void* data ) {
 	bool v = *((bool*) data);
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		current->value_.surfels_[i].up_to_date_ = v;
 	}
 }
 
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::clearUnstableSurfelsFunction( spatialaggregate::OcTreeNode< float, T >* current, spatialaggregate::OcTreeNode< float, T >* next, void* data ) {
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		if( current->value_.surfels_[i].num_points_ < MIN_SURFEL_POINTS ) {
 			// reinitialize
 			current->value_.surfels_[i].up_to_date_ = false;
@@ -2697,14 +2642,14 @@ inline void MultiResolutionColorSurfelMap<T>::clearUnstableSurfelsFunction( spat
 
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::clearRobustChangeFlagFunction( spatialaggregate::OcTreeNode< float, T >* current, spatialaggregate::OcTreeNode< float, T >* next, void* data ) {
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		current->value_.surfels_[i].became_robust_ = false;
 	}
 }
 
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::setRobustChangeFlagFunction( spatialaggregate::OcTreeNode< float, T >* current, spatialaggregate::OcTreeNode< float, T >* next, void* data ) {
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		current->value_.surfels_[i].became_robust_ = true;
 	}
 }
@@ -2713,7 +2658,7 @@ inline void MultiResolutionColorSurfelMap<T>::setRobustChangeFlagFunction( spati
 template <typename T>
 inline void MultiResolutionColorSurfelMap<T>::evaluateSurfelPairRelationsFunction( spatialaggregate::OcTreeNode< float, T >* current, spatialaggregate::OcTreeNode< float, T >* next, void* data ) {
 	MultiResolutionColorSurfelMap* map = (MultiResolutionColorSurfelMap*) data;
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		if( current->value_.surfels_[i].became_robust_ && current->value_.surfels_[i].num_points_ > NUM_SURFEL_POINTS_ROBUST && current->depth_ > PAIR_RELATION_NEIGHBORHOOD_UPLAYERS ) {
 
 			// find all nodes on query depth within query volume
@@ -2768,10 +2713,10 @@ inline int MultiResolutionColorSurfelMap<T>::traverseAndBuildSurfelPairRelations
 		// TODO: with the new one-way signature, do not check became-robust-flag of dst surfel, such that each surfel may generate pairs with itself as source
 
 		// build pair relations if dst != current and dst surfel did not become robust lately
-		for ( unsigned int i = 0; i < dst->value_.numberOfSurfels; i++ ) {
+		for ( unsigned int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 			if( /*!dst->value_.surfels_[i].became_robust_ &&*/ dst->value_.surfels_[i].num_points_ > NUM_SURFEL_POINTS_ROBUST ) {
 
-				double dist2 = (src->value_.surfels_[surfelIdx].mean_.template block<3,1>(0,0) - dst->value_.surfels_[i].mean_.template block<3,1>(0,0)).squaredNorm();
+				double dist2 = (src->value_.surfels_[surfelIdx].mean_.block<3,1>(0,0) - dst->value_.surfels_[i].mean_.block<3,1>(0,0)).squaredNorm();
 
 				if( dist2 < min_distance2 || dist2 > max_distance2 )
 					continue;
@@ -2885,7 +2830,7 @@ inline void MultiResolutionColorSurfelMap<T>::prepareContextSignatureInformation
 		if( (*it)->value_.surfels_[surfelIdx].num_points_ < MIN_SURFEL_POINTS )
 			continue;
 
-		double dist2 = (src->value_.surfels_[surfelIdx].mean_.template block<3,1>(0,0) - (*it)->value_.surfels_[surfelIdx].mean_.template block<3,1>(0,0)).squaredNorm();
+		double dist2 = (src->value_.surfels_[surfelIdx].mean_.block<3,1>(0,0) - (*it)->value_.surfels_[surfelIdx].mean_.block<3,1>(0,0)).squaredNorm();
 
 		if( dist2 > max_distance2 )
 			continue;
@@ -3042,7 +2987,7 @@ inline typename MultiResolutionColorSurfelMap<T>::SurfelPairSignature MultiResol
 	referenceRot.block<3,1>(0,2) = n1.cross( referenceRot.block<3,1>(0,1) );
 
 	// reference pose represents transform from reference frame to map frame
-	signature.reference_pose_.template block<3,1>(0,0) = p1;
+	signature.reference_pose_.block<3,1>(0,0) = p1;
 	Eigen::Quaterniond q( referenceRot );
 	signature.reference_pose_(3,0) = q.x();
 	signature.reference_pose_(4,0) = q.y();
@@ -3220,7 +3165,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualize3DColorDistributionFuncti
 
 
 	// generate markers for histogram surfels
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -3446,7 +3391,7 @@ void MultiResolutionColorSurfelMap<T>::visualize3DColorDistributionWithNormalsFu
 
 
 	// generate markers for histogram surfels
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -3685,7 +3630,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualizeMeansFunction( spatialagg
 	Eigen::Matrix< float, 4, 1 > maxPos = current->getMaxPosition();
 
 
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -3762,7 +3707,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualizeContoursFunction( spatial
 	Eigen::Matrix< float, 4, 1 > maxPos = current->getMaxPosition();
 
 
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -3905,7 +3850,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualizeNormalsFunction( spatiala
 	if( info->depth >= 0 && current->depth_ != info->depth )
 		return;
 
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -3988,7 +3933,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualizeSimilarityFunction( spati
 
 	// generate markers for histogram surfels
 	float minDist = std::numeric_limits<float>::max();
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -4067,7 +4012,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualizeBordersFunction( spatiala
 	if( current->depth_ != info->depth )
 		return;
 
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -4147,7 +4092,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualizePrincipalSurfaceFunction(
 	float resolution = current->resolution();
 
 
-	for( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;
@@ -4428,7 +4373,7 @@ std::istream& operator>>( std::istream& os, Eigen::Matrix< T, rows, cols >& m ) 
 
 std::ostream& operator<<( std::ostream& os, NodeValue& v ) {
 
-	for ( int i = 0; i < v.numberOfSurfels; i++ ) {
+	for ( int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		os << v.surfels_[i].initial_view_dir_;
 		os << v.surfels_[i].first_view_dir_;
 		os.write( (char*) &v.surfels_[i].first_view_inv_dist_, sizeof(float) );
@@ -4457,7 +4402,7 @@ std::ostream& operator<<( std::ostream& os, NodeValue& v ) {
 
 std::istream& operator>>( std::istream& os, NodeValue& v ) {
 
-	for ( int i = 0; i < v.numberOfSurfels; i++ ) {
+	for ( int i = 0; i < MAX_NUM_SURFELS; i++ ) {
 		os >> v.surfels_[i].initial_view_dir_;
 		os >> v.surfels_[i].first_view_dir_;
 		os.read( (char*) &v.surfels_[i].first_view_inv_dist_, sizeof(float) );
@@ -4642,6 +4587,4 @@ void MultiResolutionColorSurfelMap<T>::indexNodes( int minDepth, int maxDepth, b
 
 }
 
-
-template class MultiResolutionColorSurfelMap<NodeValue>;
 

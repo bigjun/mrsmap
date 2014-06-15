@@ -73,7 +73,7 @@ using namespace mrsmap;
 // simply takes the base path of the dataset
 
 
-typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
+typedef MultiResolutionColorSurfelMap<NodeValue> MultiResolutionSurfelMap;
 typedef MultiResolutionColorSurfelRegistration MultiResolutionSurfelRegistration;
 
 //typedef MultiResolutionSingleColorSurfelMap MultiResolutionSurfelMap;
@@ -103,7 +103,7 @@ public:
 
 		for( int i = 0; i < 2; i++ ) {
 			imageAllocator_[i] = boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator >( new MultiResolutionSurfelMap::ImagePreAllocator() );
-			treeNodeAllocator_[i] = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 1000 ) );
+			treeNodeAllocator_[i] = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue >( 1000 ) );
 		}
 
 
@@ -301,7 +301,7 @@ public:
 								if( viewer_.displayFeatureSimilarity ) {
 
 									Eigen::Vector4f pos = viewer_.selectedPoint.getVector4fMap();
-									spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n = lastFrameMap_->octree_->findRepresentative( pos, viewer_.selectedDepth );
+									spatialaggregate::OcTreeNode< float, NodeValue >* n = lastFrameMap_->octree_->findRepresentative( pos, viewer_.selectedDepth );
 
 									pcl::PointCloud< pcl::PointXYZRGB >::Ptr cloudMap( new pcl::PointCloud< pcl::PointXYZRGB >() );
 
@@ -437,7 +437,7 @@ public:
 						lastFrameMap_->indexNodes( 0, 16, true );
 						unsigned int numNodes = lastFrameMap_->indexedNodes_.size();
 
-						algorithm::OcTreeSamplingVectorMap<float, MultiResolutionColorSurfelMap::NodeValue> target_sampling_map = algorithm::downsampleVectorOcTree(*lastFrameMap_->octree_, false, lastFrameMap_->octree_->max_depth_);
+						algorithm::OcTreeSamplingVectorMap<float, NodeValue> target_sampling_map = algorithm::downsampleVectorOcTree(*lastFrameMap_->octree_, false, lastFrameMap_->octree_->max_depth_);
 
 						lastFrameMap_->save("tmp.map");
 						struct stat filestatus;
@@ -493,7 +493,7 @@ public:
 
     unsigned int alloc_idx_;
     boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_[2];
-    boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_[2];
+    boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > > treeNodeAllocator_[2];
 
     Viewer viewer_;
 
@@ -540,7 +540,14 @@ int main(int argc, char** argv) {
 
 
 	EvaluateVisualOdometry ev( inputpath, frameskips, intermediateskips, usefeatures, usecolor, usepointfeatures, usesurfels, mapprops, downsampling, debug );
+
+
+	pcl::StopWatch stopwatch;
+	stopwatch.reset();
 	ev.evaluate();
+	double time = stopwatch.getTimeSeconds();
+	std::cout << "Total time: " << time << std::endl;
+
 
 	if( debug ) {
 		while( ev.viewer_.is_running ) {

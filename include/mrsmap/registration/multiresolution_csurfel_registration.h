@@ -106,15 +106,15 @@ namespace mrsmap {
 		public:
 			SurfelAssociation()
 			: n_src_(NULL), src_(NULL), src_idx_(0), n_dst_(NULL), dst_(NULL), dst_idx_(0), match(0) {}
-			SurfelAssociation( spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src, MultiResolutionColorSurfelMap::Surfel* src, unsigned int src_idx, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_dst, MultiResolutionColorSurfelMap::Surfel* dst, unsigned int dst_idx )
+			SurfelAssociation( spatialaggregate::OcTreeNode< float, NodeValue >* n_src, MultiResolutionColorSurfelMap<NodeValue>::Surfel* src, unsigned int src_idx, spatialaggregate::OcTreeNode< float, NodeValue >* n_dst, MultiResolutionColorSurfelMap<NodeValue>::Surfel* dst, unsigned int dst_idx )
 			: n_src_(n_src), src_(src), src_idx_(src_idx), n_dst_(n_dst), dst_(dst), dst_idx_(dst_idx), match(1) {}
 			~SurfelAssociation() {}
 
-			spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src_;
-			MultiResolutionColorSurfelMap::Surfel* src_;
+			spatialaggregate::OcTreeNode< float, NodeValue >* n_src_;
+			MultiResolutionColorSurfelMap<NodeValue>::Surfel* src_;
 			unsigned int src_idx_;
-			spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_dst_;
-			MultiResolutionColorSurfelMap::Surfel* dst_;
+			spatialaggregate::OcTreeNode< float, NodeValue >* n_dst_;
+			MultiResolutionColorSurfelMap<NodeValue>::Surfel* dst_;
 			unsigned int dst_idx_;
 
 			Eigen::Matrix< double, 6, 1 > df_dx;
@@ -176,11 +176,11 @@ namespace mrsmap {
 		public:
 			NodeLogLikelihood()
 			: n_(NULL), loglikelihood_(0.0) {}
-			NodeLogLikelihood( spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n )
+			NodeLogLikelihood( spatialaggregate::OcTreeNode< float, NodeValue >* n )
 			: n_(n), loglikelihood_(0.0) {}
 			~NodeLogLikelihood() {}
 
-			spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_;
+			spatialaggregate::OcTreeNode< float, NodeValue >* n_;
 
 			double loglikelihood_;
 
@@ -189,37 +189,37 @@ namespace mrsmap {
 		typedef std::vector< NodeLogLikelihood > NodeLogLikelihoodList;
 
 
-		void associateMapsBreadthFirst( SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, algorithm::OcTreeSamplingVectorMap< float, MultiResolutionColorSurfelMap::NodeValue >& targetSamplingMap, Eigen::Matrix4d& transform, double minResolution, double maxResolution );
-		void associateMapsBreadthFirstParallel( SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, algorithm::OcTreeSamplingVectorMap< float, MultiResolutionColorSurfelMap::NodeValue >& targetSamplingMap, Eigen::Matrix4d& transform, double minResolution, double maxResolution, double searchDistFactor, double maxSearchDist, bool useFeatures );
+		void associateMapsBreadthFirst( SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, algorithm::OcTreeSamplingVectorMap< float, NodeValue >& targetSamplingMap, Eigen::Matrix4d& transform, double minResolution, double maxResolution );
+		void associateMapsBreadthFirstParallel( SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, algorithm::OcTreeSamplingVectorMap< float, NodeValue >& targetSamplingMap, Eigen::Matrix4d& transform, double minResolution, double maxResolution, double searchDistFactor, double maxSearchDist, bool useFeatures );
 
-		void associateNodeListParallel( SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, std::vector< spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* >& nodes, int processDepth, Eigen::Matrix4d& transform, double searchDistFactor, double maxSearchDist, bool useFeatures );
+		void associateNodeListParallel( SurfelAssociationList& surfelAssociations, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, std::vector< spatialaggregate::OcTreeNode< float, NodeValue >* >& nodes, int processDepth, Eigen::Matrix4d& transform, double searchDistFactor, double maxSearchDist, bool useFeatures );
 
 		void associatePointFeatures();
 
 		double preparePointFeatureDerivatives( const Eigen::Matrix<double, 6, 1>& x, double qw, double mahaldist );
 
 
-		std::pair< int, int > calculateNegLogLikelihood( double& logLikelihood, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node_src, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node_tgt, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate );
-		spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* calculateNegLogLikelihoodFeatureScoreN( double& logLikelihood, double& featureScore, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node, const MultiResolutionColorSurfelMap& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate = false );
-		spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* calculateNegLogLikelihoodN( double& logLikelihood, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node, const MultiResolutionColorSurfelMap& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate = false );
-		bool calculateNegLogLikelihood( double& likelihood, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* node, const MultiResolutionColorSurfelMap& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate = false );
+		std::pair< int, int > calculateNegLogLikelihood( double& logLikelihood, spatialaggregate::OcTreeNode< float, NodeValue >* node_src, spatialaggregate::OcTreeNode< float, NodeValue >* node_tgt, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate );
+		spatialaggregate::OcTreeNode< float, NodeValue >* calculateNegLogLikelihoodFeatureScoreN( double& logLikelihood, double& featureScore, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, NodeValue >* node, const MultiResolutionColorSurfelMap<NodeValue>& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate = false );
+		spatialaggregate::OcTreeNode< float, NodeValue >* calculateNegLogLikelihoodN( double& logLikelihood, bool& outOfImage, bool& virtualBorder, bool& occluded, spatialaggregate::OcTreeNode< float, NodeValue >* node, const MultiResolutionColorSurfelMap<NodeValue>& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate = false );
+		bool calculateNegLogLikelihood( double& likelihood, spatialaggregate::OcTreeNode< float, NodeValue >* node, const MultiResolutionColorSurfelMap<NodeValue>& target, const Eigen::Matrix4d& transform, double spatial_z_cov_factor, double color_z_cov, double normal_z_cov, bool interpolate = false );
 
 		// transform from src to tgt
-		double calculateInPlaneLogLikelihood( spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_src, spatialaggregate::OcTreeNode< float, MultiResolutionColorSurfelMap::NodeValue >* n_tgt, const Eigen::Matrix4d& transform, double normal_z_cov );
+		double calculateInPlaneLogLikelihood( spatialaggregate::OcTreeNode< float, NodeValue >* n_src, spatialaggregate::OcTreeNode< float, NodeValue >* n_tgt, const Eigen::Matrix4d& transform, double normal_z_cov );
 
 
-		double matchLogLikelihood( MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform );
-		double selfMatchLogLikelihood( MultiResolutionColorSurfelMap& target );
+		double matchLogLikelihood( MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform );
+		double selfMatchLogLikelihood( MultiResolutionColorSurfelMap<NodeValue>& target );
 
 		bool estimateTransformationNewton( Eigen::Matrix4d& transform, int coarseToFineIterations, int fineIterations );
 		bool estimateTransformationLevenbergMarquardt( Eigen::Matrix4d& transform, int maxIterations );
 		bool estimateTransformationLevenbergMarquardtPF( Eigen::Matrix4d& transform, int maxIterations, double featureAssocMahalDist, double minDelta, double& mu, double& nu );
 
-		bool estimateTransformation( MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesSourcePoints, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesTargetPoints, int gradientIterations = 100, int coarseToFineIterations = 0, int fineIterations = 5 );
+		bool estimateTransformation( MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesSourcePoints, pcl::PointCloud< pcl::PointXYZRGB >::Ptr correspondencesTargetPoints, int gradientIterations = 100, int coarseToFineIterations = 0, int fineIterations = 5 );
 
 
-		bool estimatePoseCovariance( Eigen::Matrix< double, 6, 6 >& cov, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution );
-		bool estimatePoseCovarianceLM( Eigen::Matrix< double, 6, 6 >& cov, MultiResolutionColorSurfelMap& source, MultiResolutionColorSurfelMap& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution );
+		bool estimatePoseCovariance( Eigen::Matrix< double, 6, 6 >& cov, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution );
+		bool estimatePoseCovarianceLM( Eigen::Matrix< double, 6, 6 >& cov, MultiResolutionColorSurfelMap<NodeValue>& source, MultiResolutionColorSurfelMap<NodeValue>& target, Eigen::Matrix4d& transform, float startResolution, float stopResolution );
 
 
 		void setPriorPoseEnabled( bool enabled ) { params_.use_prior_pose_ = enabled; }
@@ -227,11 +227,11 @@ namespace mrsmap {
 
 		Params params_;
 
-		MultiResolutionColorSurfelMap* source_;
-		MultiResolutionColorSurfelMap* target_;
+		MultiResolutionColorSurfelMap<NodeValue>* source_;
+		MultiResolutionColorSurfelMap<NodeValue>* target_;
 //		SurfelAssociationList surfelAssociations_;
 		FeatureAssociationList featureAssociations_;
-		algorithm::OcTreeSamplingVectorMap< float, MultiResolutionColorSurfelMap::NodeValue > targetSamplingMap_;
+		algorithm::OcTreeSamplingVectorMap< float, NodeValue > targetSamplingMap_;
 		float lastWSign_;
 		bool interpolate_neighbors_;
 
@@ -284,7 +284,7 @@ namespace mrsmap {
 //		class FramePair {
 //		public:
 //
-//			FramePair( MultiResolutionColorSurfelMap* source, MultiResolutionColorSurfelMap* target, const Eigen::Matrix4d& transformGuess )
+//			FramePair( MultiResolutionColorSurfelMap<NodeValue>* source, MultiResolutionColorSurfelMap<NodeValue>* target, const Eigen::Matrix4d& transformGuess )
 //			: source_( source )
 //			, target_( target )
 //			, transform_( transformGuess ) {
@@ -292,8 +292,8 @@ namespace mrsmap {
 //
 //			~FramePair() {}
 //
-//			MultiResolutionColorSurfelMap* source_;
-//			MultiResolutionColorSurfelMap* target_;
+//			MultiResolutionColorSurfelMap<NodeValue>* source_;
+//			MultiResolutionColorSurfelMap<NodeValue>* target_;
 //			Eigen::Matrix4d transform_;
 //
 //		public:
@@ -304,7 +304,7 @@ namespace mrsmap {
 //		class FramePairConstraint {
 //		public:
 //
-//			FramePairConstraint( MultiResolutionColorSurfelMap* target_from, MultiResolutionColorSurfelMap* target_to, const Eigen::Matrix4d& refFrameTransform, const Eigen::Matrix< double, 7, 1 >& poseConstraintMean, const Eigen::Matrix< double, 6, 1 >& poseConstraintVar )
+//			FramePairConstraint( MultiResolutionColorSurfelMap<NodeValue>* target_from, MultiResolutionColorSurfelMap<NodeValue>* target_to, const Eigen::Matrix4d& refFrameTransform, const Eigen::Matrix< double, 7, 1 >& poseConstraintMean, const Eigen::Matrix< double, 6, 1 >& poseConstraintVar )
 //			: target_from_( target_from )
 //			, target_to_( target_to )
 //			, ref_frame_transform_( refFrameTransform )
@@ -314,8 +314,8 @@ namespace mrsmap {
 //
 //			~FramePairConstraint() {}
 //
-//			MultiResolutionColorSurfelMap* target_from_;
-//			MultiResolutionColorSurfelMap* target_to_;
+//			MultiResolutionColorSurfelMap<NodeValue>* target_from_;
+//			MultiResolutionColorSurfelMap<NodeValue>* target_to_;
 //
 //			Eigen::Matrix4d ref_frame_transform_;
 //
@@ -335,9 +335,9 @@ namespace mrsmap {
 //			stop_resolution_ = stopResolution;
 //		}
 //
-//		void addFramePair( MultiResolutionColorSurfelMap* source, MultiResolutionColorSurfelMap* target, const Eigen::Matrix4d& transformGuess );
+//		void addFramePair( MultiResolutionColorSurfelMap<NodeValue>* source, MultiResolutionColorSurfelMap<NodeValue>* target, const Eigen::Matrix4d& transformGuess );
 //
-//		void addTargetPoseConstraint( MultiResolutionColorSurfelMap* target_from, MultiResolutionColorSurfelMap* target_to, const Eigen::Matrix4d& refFrameTransform, const Eigen::Matrix< double, 7, 1 >& prior_pose_mean, const Eigen::Matrix< double, 6, 1 >& prior_pose_variances );
+//		void addTargetPoseConstraint( MultiResolutionColorSurfelMap<NodeValue>* target_from, MultiResolutionColorSurfelMap<NodeValue>* target_to, const Eigen::Matrix4d& refFrameTransform, const Eigen::Matrix< double, 7, 1 >& prior_pose_mean, const Eigen::Matrix< double, 6, 1 >& prior_pose_variances );
 //
 //
 //		bool estimateTransformationLevenbergMarquardt( unsigned int maxIterations );
@@ -359,7 +359,7 @@ namespace mrsmap {
 //		std::vector< FramePairConstraint, Eigen::aligned_allocator< FramePairConstraint > > target_pose_constraints_;
 //		std::vector< std::pair< int, int > > target_pose_constraint_ids_;
 //
-//		std::vector< algorithm::OcTreeSamplingVectorMap<float, MultiResolutionColorSurfelMap::NodeValue>, Eigen::aligned_allocator< algorithm::OcTreeSamplingVectorMap<float, MultiResolutionColorSurfelMap::NodeValue> > > target_sampling_maps_;
+//		std::vector< algorithm::OcTreeSamplingVectorMap<float, NodeValue>, Eigen::aligned_allocator< algorithm::OcTreeSamplingVectorMap<float, NodeValue> > > target_sampling_maps_;
 //
 //		Eigen::Matrix4d dT_tx_, dT_ty_, dT_tz_, dT_qx_, dT_qy_, dT_qz_;
 //

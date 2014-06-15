@@ -440,8 +440,8 @@ void MultiResolutionColorSurfelMap<T>::addImage( const pcl::PointCloud< pcl::Poi
 			if( !*mapPtr ) {
 				// create new node value
 				*mapPtr = imageAllocator_->imageNodeAllocator_.allocate();
-				memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
-				//std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
+				//memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
+				std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
 				for( unsigned int i = 0; i < (*mapPtr)->numberOfSurfels; i++ ) {
 					(*mapPtr)->surfels_[i].first_view_dir_ = viewDirection;
 					(*mapPtr)->surfels_[i].first_view_inv_dist_ = viewDistanceInv;
@@ -711,8 +711,8 @@ void MultiResolutionColorSurfelMap<T>::addDisplacementImage( const pcl::PointClo
 			if( !*mapPtr ) {
 				// create new node value
 				*mapPtr = imageAllocator_->imageNodeAllocator_.allocate();
-				memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
-				//std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
+				//memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
+				std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
 				for( unsigned int i = 0; i < (*mapPtr)->numberOfSurfels; i++ ) {
 					(*mapPtr)->surfels_[i].first_view_dir_ = viewDirection;
 					(*mapPtr)->surfels_[i].first_view_inv_dist_ = viewDistanceInv;
@@ -1033,8 +1033,9 @@ void MultiResolutionColorSurfelMap<T>::ImageAddFunctor::operator()( const tbb::b
 			if( !*mapPtr ) {
 				// create new node value
 				*mapPtr = imageAllocator_->imageNodeAllocator_.concurrent_allocate();
-				memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
-				//std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
+				//memcpy( (*mapPtr)->surfels_, initValue.surfels_, sizeof(initValue.surfels_) );
+				std::copy(initValue.surfels_.begin(), initValue.surfels_.end(), (*mapPtr)->surfels_.begin());
+
 				for( unsigned int i = 0; i < (*mapPtr)->numberOfSurfels; i++ ) {
 					(*mapPtr)->surfels_[i].first_view_dir_ = viewDirection;
 					(*mapPtr)->surfels_[i].first_view_inv_dist_ = viewDistanceInv;
@@ -2247,7 +2248,7 @@ void markBorderFromViewpointFunction( spatialaggregate::OcTreeNode< float, T>* c
 
 //	current->value_.border_ = false;
 
-	for( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for( unsigned int i = 0; i < 6; i++ ) {
 
 		const ColorSurfel& surfel = current->value_.surfels_[i];
 
@@ -3762,7 +3763,7 @@ inline void MultiResolutionColorSurfelMap<T>::visualizeContoursFunction( spatial
 	Eigen::Matrix< float, 4, 1 > maxPos = current->getMaxPosition();
 
 
-	for ( unsigned int i = 0; i < current->value_.numberOfSurfels; i++ ) {
+	for ( unsigned int i = 0; i < 6; i++ ) {
 
 		if( info->viewDir >= 0 && info->viewDir != i )
 			continue;

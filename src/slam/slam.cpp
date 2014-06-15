@@ -77,7 +77,7 @@ SLAM::SLAM() {
 	srand(time(NULL));
 
 	imageAllocator_ = boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator >( new MultiResolutionSurfelMap::ImagePreAllocator() );
-	treeNodeAllocator_ = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 1000 ) );
+	treeNodeAllocator_ = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue >( 1000 ) );
 
 
 	referenceKeyFrameId_ = 0;

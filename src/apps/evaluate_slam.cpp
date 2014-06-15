@@ -57,7 +57,7 @@ namespace po = boost::program_options;
 
 using namespace mrsmap;
 
-//typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
+//typedef MultiResolutionColorSurfelMap<NodeValue> MultiResolutionSurfelMap;
 
 // parses Juergen Sturm's datasets (tgz archives + timestamp associations)
 // simply takes the base path of the dataset
@@ -94,8 +94,8 @@ public:
 		imageAllocator_ = boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator >( new MultiResolutionSurfelMap::ImagePreAllocator() );
 
 		for( int i = 0; i < 2; i++ ) {
-			treeNodeAllocator_[ i ] = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >(
-					new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 1000 ) );
+			treeNodeAllocator_[ i ] = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > >(
+					new spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue >( 1000 ) );
 		}
 
 		graphChanged_ = true;
@@ -282,7 +282,7 @@ public:
 	bool skip_past_frames_;
 
 	boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_;
-	boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_[ 2 ];
+	boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > > treeNodeAllocator_[ 2 ];
 
 	ViewerSLAM viewer_;
 

@@ -70,7 +70,7 @@ namespace mrsmap {
 #if USE_POINTFEATURE_REGISTRATION
 	typedef MultiResolutionPointFeatureSurfelMap MultiResolutionSurfelMap;
 #else
-	typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
+	typedef MultiResolutionColorSurfelMap<NodeValue> MultiResolutionSurfelMap;
 #endif
 
 
@@ -143,7 +143,7 @@ namespace mrsmap {
 		boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_;
 
 		// only for the current frame
-		boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_;
+		boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > > treeNodeAllocator_;
 
 		g2o::SparseOptimizer* optimizer_;
 

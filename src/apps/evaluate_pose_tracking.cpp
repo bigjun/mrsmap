@@ -67,7 +67,7 @@ using namespace std;
 using namespace mrsmap;
 
 
-typedef MultiResolutionColorSurfelMap MultiResolutionSurfelMap;
+typedef MultiResolutionColorSurfelMap<NodeValue> MultiResolutionSurfelMap;
 
 
 
@@ -91,7 +91,7 @@ public:
 	EvaluatePoseTracking( int argc, char** argv ) {
 
 		imageAllocator_ = boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator >( new MultiResolutionSurfelMap::ImagePreAllocator() );
-		treeNodeAllocator_ = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue >( 10000 ) );
+		treeNodeAllocator_ = boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > >( new spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue >( 10000 ) );
 
 
 		po::options_description desc("Allowed options");
@@ -387,7 +387,7 @@ public:
     Eigen::Matrix< double, 3, 3 > map_cov_inv_;
 
     boost::shared_ptr< MultiResolutionSurfelMap::ImagePreAllocator > imageAllocator_;
-    boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, MultiResolutionSurfelMap::NodeValue > > treeNodeAllocator_;
+    boost::shared_ptr< spatialaggregate::OcTreeNodeDynamicAllocator< float, NodeValue > > treeNodeAllocator_;
 
     double min_resolution_, max_range_;
     int start_frame_, end_frame_;
